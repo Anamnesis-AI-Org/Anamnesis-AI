@@ -61,6 +61,11 @@ from app.validation.calibration import calculate_calibration
 from langgraph.constants import END, START
 from langgraph.graph import StateGraph
 
+def _merge_error(existing: str | None, new: str | None) -> str | None:
+    """When multiple parallel agents fail in the same step, keep the first error."""
+    return existing or new
+
+
 
 class GraphState(TypedDict, total=False):
 	scenario_id: Required[str]
@@ -77,7 +82,7 @@ class GraphState(TypedDict, total=False):
 	demographics_output: DemographicsOutput | None
 	critic_output: CriticOutput | None
 	final_report: FinalReportSchema | None
-	error: str | None
+	error: Annotated[str | None, _merge_error]
 	# RAG lists accumulated via list concatenation (add reducer)
 	retrieved_documents: Annotated[list[str], add]
 	sources_consulted: Annotated[list[str], add]
