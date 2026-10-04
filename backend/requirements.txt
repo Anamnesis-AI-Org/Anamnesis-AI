@@ -11,3 +11,4 @@ aiosqlite>=0,<1
 chromadb>=0.4.0,<0.6.0
 wikipedia>=1.4.0,<2.0.0
 arxiv>=2.1.0,<3.0.0
+aiosqlite>=0.19,<1

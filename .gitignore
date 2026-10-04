@@ -1,13 +1,45 @@
-node_modules/
-.next/
+# Environment / secrets
+.env
+.env.*
+.env*.local
+!.env.example
+!.env.*.example
+
+# Python
 __pycache__/
+*.py[cod]
 *.pyc
 .venv/
-.env
-.env.local
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+
+# Local databases & storage
 *.db
+*.sqlite
+*.sqlite3
 chroma_db/
+
+# Testing, logs & cache
 verify_report.json
+<<<<<<< HEAD
 
 # caches / build artifacts / logs
 .cache/
@@ -15,3 +47,9 @@ verify_report.json
 *.coverage
 *.log
 *.tsbuildinfo
+=======
+.coverage
+*.log
+.cache/
+*.tsbuildinfo
+>>>>>>> 3665dd46ea0fabab07e6c6652a365d84faeb8d04
