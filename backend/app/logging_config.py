@@ -73,3 +73,10 @@ def setup_logging() -> None:
     # Quieten noisy third-party loggers.
     for name in ("httpcore", "httpx", "chromadb", "urllib3"):
         logging.getLogger(name).setLevel(logging.WARNING)
+
+    # google-genai logs an "automatic function calling is not recommended"
+    # recommendation on every plain generate_content call. Keep only its real
+    # errors so production logs stay clean. The SDK registers the logger under
+    # both the module path and the normalized package name.
+    for name in ("google.genai", "google_genai"):
+        logging.getLogger(name).setLevel(logging.ERROR)

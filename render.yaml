@@ -1,0 +1,24 @@
+# Render blueprint for the Anamnesis-AI FastAPI backend.
+# Free-tier web service built from the backend Dockerfile.
+services:
+  - type: web
+    name: anamnesis-ai-backend
+    runtime: docker
+    plan: free
+    rootDir: backend
+    healthCheckPath: /
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_FORMAT
+        value: json
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: MAX_CONCURRENT_SIMULATIONS
+        value: "5"

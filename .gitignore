@@ -8,3 +8,10 @@ __pycache__/
 *.db
 chroma_db/
 verify_report.json
+
+# caches / build artifacts / logs
+.cache/
+.pytest_cache/
+*.coverage
+*.log
+*.tsbuildinfo

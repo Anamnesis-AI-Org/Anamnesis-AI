@@ -3,7 +3,7 @@ import copy
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from app.models import FinalReport, Scenario, AgentOutput
-from app.llm_client import call_agent, USE_MOCK
+from app.llm_client import call_agent
 from app.schemas import (
     FinalReportSchema, AgentOutputSummary, ImpactDashboard,
     HistorianOutput, EconomistOutput, TechnologyOutput, SocietyOutput, ClimateOutput,
@@ -67,7 +67,7 @@ async def adjust_scenario_parameters(
             for agent in PARAMETER_MAP[param]:
                 affected_agents.add(agent)
 
-    # 3. Re-run affected agents (or simulate if mock mode is active)
+    # 3. Re-run affected agents
     # Reconstruct ScenarioContext from FinalReport schemas
     from app.schemas import ScenarioContext
     import re
@@ -109,45 +109,14 @@ async def adjust_scenario_parameters(
 
         db_out = db_agent_outputs[agent_name]
 
-        # If agent is unaffected, keep it as is
-        if agent_name not in affected_agents or USE_MOCK:
-            # Check mock adjustments logic to allow interactive sliders in mock mode
-            if USE_MOCK and agent_name in affected_agents:
-                # We dynamically modify the mock impact score and description based on slider values!
-                score = db_out.structured_data.get("impact_score") or 50
-                analysis = db_out.analysis_text or ""
-                
-                if "resource_abundance" in adjustments and agent_name in ["economist", "energy"]:
-                    val = adjustments["resource_abundance"]
-                    score = int(score + (val - 50) * 0.8)
-                    analysis = f"[Adjusted: Resource Abundance={val}%] " + analysis
-                if "transition_speed" in adjustments and agent_name in ["technology", "society"]:
-                    val = adjustments["transition_speed"]
-                    score = int(score + (val - 50) * 0.7)
-                    analysis = f"[Adjusted: Transition Speed={val}%] " + analysis
-                if "government_control" in adjustments and agent_name in ["political", "society"]:
-                    val = adjustments["government_control"]
-                    score = int(score + (val - 50) * 0.6)
-                    analysis = f"[Adjusted: Government Control={val}%] " + analysis
-                if "climate_feedback" in adjustments and agent_name == "climate":
-                    val = adjustments["climate_feedback"]
-                    score = int(score - (val - 50) * 0.9) # Higher climate feedback often reduces climate score (worse warming)
-                    analysis = f"[Adjusted: Climate Feedback={val}%] " + analysis
-
-                score = max(-100, min(100, score))
-                updated_outputs[agent_name] = {
-                    "agent_name": agent_name,
-                    "analysis_text": analysis,
-                    "timeline_events": [TimelineEvent(year=ev.get("year", 2000), event=ev.get("event", "")) for ev in (db_out.structured_data.get("timeline_events") or [])],
-                    "impact_score": score
-                }
-            else:
-                updated_outputs[agent_name] = {
-                    "agent_name": agent_name,
-                    "analysis_text": db_out.analysis_text,
-                    "timeline_events": [TimelineEvent(year=ev.get("year", 2000), event=ev.get("event", "")) for ev in (db_out.structured_data.get("timeline_events") or [])],
-                    "impact_score": db_out.structured_data.get("impact_score") or 0
-                }
+        # If the agent is unaffected, keep its current output.
+        if agent_name not in affected_agents:
+            updated_outputs[agent_name] = {
+                "agent_name": agent_name,
+                "analysis_text": db_out.analysis_text,
+                "timeline_events": [TimelineEvent(year=ev.get("year", 2000), event=ev.get("event", "")) for ev in (db_out.structured_data.get("timeline_events") or [])],
+                "impact_score": db_out.structured_data.get("impact_score") or 0
+            }
             continue
 
         # Otherwise re-run the agent using LLM client (Real mode)

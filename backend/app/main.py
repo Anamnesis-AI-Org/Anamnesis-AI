@@ -1,13 +1,13 @@
 """
-KAGGLE CAPSTONE SUBMISSION - CATEGORY 2: IMPLEMENTATION (Multi-Agent System)
+FastAPI backend for Anamnesis-AI.
 
-This module implements the FastAPI backend which serves as the entrypoint for the
-multi-agent simulation (ADK pattern). It triggers the LangGraph Orchestrator and
-monitors the lifecycle of all domain agents executing in the background.
+This module is the entrypoint for the multi-agent simulation platform. It exposes
+the HTTP and WebSocket API, triggers the LangGraph orchestrator in the
+background, and monitors the lifecycle of the domain agents as they run.
 
-Key Design Patterns Demonstrated:
-1. Agent Orchestration: Background tasks manage long-running multi-agent debates.
-2. Production Deployability: Full FastAPI implementation with telemetry/websockets.
+Key design patterns:
+1. Agent orchestration: background tasks manage long-running multi-agent runs.
+2. Realtime telemetry: a WebSocket channel streams live agent progress to the UI.
 """
 import logging
 from contextlib import asynccontextmanager
@@ -131,10 +131,9 @@ async def create_scenario(
     db=Depends(get_db),
 ) -> ScenarioCreateResponse:
     """
-    KAGGLE CAPSTONE:
     This endpoint initiates the multi-agent simulation. It takes a "What-If" scenario,
     saves it to the database, and kicks off the background orchestrator which coordinates
-    the 8 specialized domain agents.
+    the specialized domain agents.
     """
     # Input validation
     trimmed = request.raw_input.strip()

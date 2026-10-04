@@ -25,6 +25,14 @@ DATABASE_URL: str = os.getenv(
     "DATABASE_URL", "sqlite+aiosqlite:///./anamnesis.db"
 )
 
+# Normalise common provider URL schemes (e.g. Supabase/Render hand back
+# ``postgres://`` / ``postgresql://``) to the async SQLAlchemy driver, so a
+# copy-pasted connection string works without manual edits.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql+asyncpg://" + DATABASE_URL.removeprefix("postgres://")
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = "postgresql+asyncpg://" + DATABASE_URL.removeprefix("postgresql://")
+
 DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "5"))
 DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
 DB_CONNECT_TIMEOUT: int = int(os.getenv("DB_CONNECT_TIMEOUT", "5"))
@@ -33,11 +41,18 @@ DB_CONNECT_TIMEOUT: int = int(os.getenv("DB_CONNECT_TIMEOUT", "5"))
 # ── LLM Providers ────────────────────────────────────────────────────────────
 
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
+GEMINI_FALLBACK_MODELS: list[str] = [
+    model.strip()
+    for model in os.getenv(
+        "GEMINI_FALLBACK_MODELS",
+        "gemini-3.5-flash-lite,gemini-flash-latest",
+    ).split(",")
+    if model.strip()
+]
 
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-ANTHROPIC_MODEL: str = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
-ANTHROPIC_MAX_TOKENS: int = int(os.getenv("ANTHROPIC_MAX_TOKENS", "1024"))
+_gemini_chain: list[str] = [GEMINI_MODEL, *GEMINI_FALLBACK_MODELS]
+GEMINI_MODEL_CHAIN: tuple[str, ...] = tuple(dict.fromkeys(_gemini_chain))
 
 
 # ── CORS ──────────────────────────────────────────────────────────────────────

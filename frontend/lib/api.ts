@@ -81,3 +81,75 @@ export async function branchScenario(
 
   return response.json();
 }
+
+export interface AskResponse {
+  answer: string;
+  citations: string[];
+}
+
+export interface DebateRound {
+  round_num: number;
+  agent_name: string;
+  argument: string;
+}
+
+export interface DebateResponse {
+  rounds: DebateRound[];
+  consensus: string;
+}
+
+export async function askScenario(scenarioId: string, question: string): Promise<AskResponse> {
+  const response = await fetch(`${API_BASE}/api/scenarios/${scenarioId}/ask`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ question })
+  });
+
+  if (!response.ok) {
+    throw await buildApiError(response);
+  }
+
+  return response.json();
+}
+
+export async function debateScenario(
+  scenarioId: string,
+  topic: string,
+  agentA: string,
+  agentB: string
+): Promise<DebateResponse> {
+  const response = await fetch(`${API_BASE}/api/scenarios/${scenarioId}/debate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ topic, agent_a: agentA, agent_b: agentB })
+  });
+
+  if (!response.ok) {
+    throw await buildApiError(response);
+  }
+
+  return response.json();
+}
+
+export async function adjustScenario(
+  scenarioId: string,
+  adjustments: Record<string, number>
+): Promise<FinalReport> {
+  const response = await fetch(`${API_BASE}/api/scenarios/${scenarioId}/adjust`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ adjustments })
+  });
+
+  if (!response.ok) {
+    throw await buildApiError(response);
+  }
+
+  return response.json();
+}

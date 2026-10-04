@@ -9,7 +9,14 @@ import {
   Scale, Globe, Clock, GitBranch, MessageSquare, BookOpen
 } from "lucide-react";
 
-import { getScenarioReport, ReportNotReadyError } from "../../../lib/api";
+import {
+  getScenarioReport,
+  ReportNotReadyError,
+  askScenario,
+  debateScenario,
+  adjustScenario,
+} from "../../../lib/api";
+import type { AskResponse, DebateResponse } from "../../../lib/api";
 import { MOCK_SCENARIOS } from "../../../lib/mockScenarios";
 import type { FinalReport, UnifiedTimelineEvent, AgentOutputSummary } from "../../../lib/types";
 
@@ -24,6 +31,18 @@ function formatAgentName(name: string): string {
   if (!name) return name;
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
+
+const DEBATE_AGENTS = [
+  "historian",
+  "economist",
+  "technology",
+  "society",
+  "climate",
+  "political",
+  "energy",
+  "healthcare",
+  "demographics",
+];
 
 interface RadarData {
   economy: number;
@@ -169,7 +188,30 @@ export default function ReportPage() {
   const [report, setReport] = useState<FinalReport | null>(null);
   const [error, setError] = useState("");
   const [shareStatus, setShareStatus] = useState("Share Report");
-  const [activeTab, setActiveTab] = useState<"synthesis" | "timeline" | "tree" | "causal" | "discussions" | "sources">("synthesis");
+  const [activeTab, setActiveTab] = useState<"synthesis" | "timeline" | "tree" | "causal" | "discussions" | "sources" | "exploration">("synthesis");
+  const [isMock, setIsMock] = useState(false);
+
+  // Exploration Lab state (Q&A, debate, parameter adjustment)
+  const [question, setQuestion] = useState("");
+  const [qaAnswer, setQaAnswer] = useState<AskResponse | null>(null);
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaError, setQaError] = useState("");
+
+  const [debateTopic, setDebateTopic] = useState("");
+  const [debateAgentA, setDebateAgentA] = useState("historian");
+  const [debateAgentB, setDebateAgentB] = useState("economist");
+  const [debateResult, setDebateResult] = useState<DebateResponse | null>(null);
+  const [debateLoading, setDebateLoading] = useState(false);
+  const [debateError, setDebateError] = useState("");
+
+  const [adjustments, setAdjustments] = useState<Record<string, number>>({
+    resource_abundance: 50,
+    transition_speed: 50,
+    government_control: 50,
+    climate_feedback: 50,
+  });
+  const [adjustLoading, setAdjustLoading] = useState(false);
+  const [adjustError, setAdjustError] = useState("");
 
   const id = typeof params?.id === "string" ? params.id : Array.isArray(params?.id) ? params.id[0] : "";
 
@@ -179,11 +221,13 @@ export default function ReportPage() {
 
     const matchedMock = MOCK_SCENARIOS.find((sc) => sc.id === id);
     if (matchedMock) {
+      setIsMock(true);
       setReport(matchedMock.report);
       setError("");
       return;
     }
 
+    setIsMock(false);
     let active = true;
 
     const loadReport = async () => {
@@ -192,6 +236,11 @@ export default function ReportPage() {
         if (!active) return;
         setReport(nextReport);
         setError("");
+        try {
+          window.localStorage.setItem(`anamnesis_report_${id}`, JSON.stringify(nextReport));
+        } catch {
+          // Ignore storage quota / privacy mode errors.
+        }
       } catch (loadError) {
         if (!active) return;
         if (loadError instanceof ReportNotReadyError) {
@@ -220,8 +269,57 @@ export default function ReportPage() {
     setTimeout(() => setShareStatus("Share Report"), 2000);
   };
 
+  const handleAsk = async () => {
+    if (!question.trim() || isMock) return;
+    setQaLoading(true);
+    setQaError("");
+    setQaAnswer(null);
+    try {
+      const res = await askScenario(id, question.trim());
+      setQaAnswer(res);
+    } catch (err) {
+      setQaError(err instanceof Error ? err.message : "Failed to answer question.");
+    } finally {
+      setQaLoading(false);
+    }
+  };
+
+  const handleDebate = async () => {
+    if (!debateTopic.trim() || isMock) return;
+    setDebateLoading(true);
+    setDebateError("");
+    setDebateResult(null);
+    try {
+      const res = await debateScenario(id, debateTopic.trim(), debateAgentA, debateAgentB);
+      setDebateResult(res);
+    } catch (err) {
+      setDebateError(err instanceof Error ? err.message : "Failed to run debate.");
+    } finally {
+      setDebateLoading(false);
+    }
+  };
+
+  const handleAdjust = async () => {
+    if (isMock) return;
+    setAdjustLoading(true);
+    setAdjustError("");
+    try {
+      const updated = await adjustScenario(id, adjustments);
+      setReport(updated);
+      try {
+        window.localStorage.setItem(`anamnesis_report_${id}`, JSON.stringify(updated));
+      } catch {
+        // Ignore storage errors.
+      }
+    } catch (err) {
+      setAdjustError(err instanceof Error ? err.message : "Failed to apply adjustments.");
+    } finally {
+      setAdjustLoading(false);
+    }
+  };
+
   const handleExport = () => {
-    alert("Exporting simulation report as premium PDF laboratory transcript...");
+    window.print();
   };
 
   if (error) {
@@ -257,14 +355,17 @@ export default function ReportPage() {
 
   const impactDashboard = report.impact_dashboard;
 
-  const tabs = [
+  const tabs: { id: typeof activeTab; label: string; icon: typeof FileText }[] = [
     { id: "synthesis", label: "Executive Synthesis", icon: FileText },
     { id: "timeline", label: "Interactive Chronology", icon: Clock },
     { id: "tree", label: "Divergence Tree", icon: GitBranch },
     { id: "causal", label: "Causal DAG Graph", icon: GitBranch },
     { id: "discussions", label: "Domain Briefings", icon: MessageSquare },
     { id: "sources", label: "Consulted Sources", icon: BookOpen },
-  ] as const;
+    ...(isMock
+      ? []
+      : [{ id: "exploration" as typeof activeTab, label: "Exploration Lab", icon: HelpCircle }]),
+  ];
 
   return (
     <main className="min-h-screen bg-black px-6 py-12 relative overflow-hidden select-none">
@@ -623,6 +724,175 @@ export default function ReportPage() {
 
             </div>
           )}
+
+          {/* TAB: EXPLORATION LAB */}
+          {activeTab === "exploration" && !isMock && (
+            <div className="space-y-8 animate-fade-in">
+
+              {/* Ask the simulation */}
+              <section className="rounded-2xl glass-panel p-8 shadow-xl space-y-5">
+                <div className="flex items-center gap-2">
+                  <HelpCircle className="h-4 w-4 text-cyan-400" />
+                  <h2 className="text-md font-bold tracking-wide text-white">Ask the Simulation</h2>
+                </div>
+                <p className="text-xs text-slate-400 font-light leading-6">
+                  Pose a follow-up question. The answer is grounded in this report&apos;s timeline and
+                  domain briefings, with citations.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") void handleAsk(); }}
+                    placeholder="E.g., How does this scenario affect coastal agriculture?"
+                    className="flex-grow rounded-xl border border-white/5 bg-slate-950/65 px-4 py-3 text-xs text-slate-100 placeholder:text-slate-600 outline-none focus:border-cyan-500/30 transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleAsk()}
+                    disabled={qaLoading || !question.trim()}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-cyan-400 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-950 transition hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {qaLoading ? "Analyzing..." : "Ask"}
+                  </button>
+                </div>
+                {qaError && (
+                  <p className="text-xs text-rose-400 font-mono flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" /> {qaError}
+                  </p>
+                )}
+                {qaAnswer && (
+                  <div className="rounded-xl border border-white/5 bg-slate-950/45 p-5 space-y-3">
+                    <p className="text-xs leading-relaxed text-slate-300 font-light whitespace-pre-wrap">
+                      {qaAnswer.answer}
+                    </p>
+                    {qaAnswer.citations && qaAnswer.citations.length > 0 && (
+                      <div className="pt-3 border-t border-white/5 space-y-1.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-cyan-400">
+                          Citations
+                        </span>
+                        <ul className="list-inside list-disc space-y-1 text-[10px] text-slate-500 font-light">
+                          {qaAnswer.citations.map((c, i) => (
+                            <li key={i}>{c}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+
+
+              {/* Agent debate */}
+              <section className="rounded-2xl glass-panel p-8 shadow-xl space-y-5">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-violet-400" />
+                  <h2 className="text-md font-bold tracking-wide text-white">Agent Debate</h2>
+                </div>
+                <p className="text-xs text-slate-400 font-light leading-6">
+                  Stage a structured two-round debate between two domain agents, concluded by a
+                  Critic synthesis.
+                </p>
+                <input
+                  value={debateTopic}
+                  onChange={(e) => setDebateTopic(e.target.value)}
+                  placeholder="Debate topic, e.g., the pace of the transition"
+                  className="w-full rounded-xl border border-white/5 bg-slate-950/65 px-4 py-3 text-xs text-slate-100 placeholder:text-slate-600 outline-none focus:border-violet-500/30 transition"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <select
+                    value={debateAgentA}
+                    onChange={(e) => setDebateAgentA(e.target.value)}
+                    className="rounded-xl border border-white/5 bg-slate-950 p-3 text-xs text-slate-300 outline-none focus:border-violet-400/30 cursor-pointer"
+                  >
+                    {DEBATE_AGENTS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={debateAgentB}
+                    onChange={(e) => setDebateAgentB(e.target.value)}
+                    className="rounded-xl border border-white/5 bg-slate-950 p-3 text-xs text-slate-300 outline-none focus:border-violet-400/30 cursor-pointer"
+                  >
+                    {DEBATE_AGENTS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleDebate()}
+                  disabled={debateLoading || !debateTopic.trim() || debateAgentA === debateAgentB}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-violet-500 px-5 py-3 text-xs font-bold uppercase tracking-wider text-white transition hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {debateLoading ? "Debating..." : "Start Debate"}
+                </button>
+                {debateError && <p className="text-xs text-rose-400 font-mono">{debateError}</p>}
+                {debateResult && (
+                  <div className="space-y-3">
+                    {debateResult.rounds.map((r, i) => (
+                      <div key={i} className="rounded-xl border border-white/5 bg-slate-950/45 p-4 space-y-1">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-violet-300">
+                          Round {r.round_num} · {formatAgentName(r.agent_name)}
+                        </span>
+                        <p className="text-xs leading-relaxed text-slate-300 font-light">{r.argument}</p>
+                      </div>
+                    ))}
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                        <Shield className="h-3 w-3" /> Critic Synthesis
+                      </span>
+                      <p className="text-xs leading-relaxed text-slate-300 font-light">{debateResult.consensus}</p>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+
+              {/* Parameter re-simulation */}
+              <section className="rounded-2xl glass-panel p-8 shadow-xl space-y-5">
+                <div className="flex items-center gap-2">
+                  <Scale className="h-4 w-4 text-emerald-400" />
+                  <h2 className="text-md font-bold tracking-wide text-white">Parameter Re-Simulation</h2>
+                </div>
+                <p className="text-xs text-slate-400 font-light leading-6">
+                  Adjust structural parameters and re-run only the affected agents. The report is
+                  recomposed in place.
+                </p>
+                <div className="grid gap-5 sm:grid-cols-2">
+                  {Object.entries(adjustments).map(([key, value]) => (
+                    <div key={key} className="space-y-2">
+                      <div className="flex justify-between text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                        <span>{key.replace(/_/g, " ")}</span>
+                        <span className="text-emerald-400">{value}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={value}
+                        onChange={(e) =>
+                          setAdjustments((prev) => ({ ...prev, [key]: Number(e.target.value) }))
+                        }
+                        className="w-full accent-emerald-400"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleAdjust()}
+                  disabled={adjustLoading}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-400 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-950 transition hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {adjustLoading ? "Re-simulating..." : "Apply & Re-Simulate"}
+                </button>
+                {adjustError && <p className="text-xs text-rose-400 font-mono">{adjustError}</p>}
+              </section>
+
+            </div>
+          )}
+
 
         </div>
 

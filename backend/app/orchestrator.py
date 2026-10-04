@@ -1,14 +1,19 @@
 """
-KAGGLE CAPSTONE SUBMISSION - CATEGORY 2: IMPLEMENTATION (Multi-Agent System)
+Core multi-agent orchestration for Anamnesis-AI.
 
-This module implements the core **Agent / Multi-Agent System** using LangGraph (ADK pattern).
-It serves as the Orchestrator that breaks down user scenarios and manages the lifecycle 
-and communication between multiple specialized domain agents (Historian, Economist, Technology, etc.).
+This module implements the simulation pipeline using LangGraph. It acts as the
+Orchestrator that decomposes a user scenario and manages the lifecycle and
+communication between the specialized domain agents (Historian, Economist,
+Technology, Society, Climate, Political, Energy, Healthcare, Demographics) and
+the Critic that converges their outputs.
 
-Key Design Patterns Demonstrated:
-1. Agent-to-Agent Communication: Each node represents an independent agent analyzing the scenario from its perspective.
-2. Fan-out / Fan-in Architecture: The Orchestrator parallelizes tasks to domain agents (fan-out) and converges them into the Critic agent (fan-in).
-3. Grounded Reasoning: We fetch contextual data from Foundry IQ before running the simulation to minimize LLM hallucination.
+Design patterns:
+1. Agent-to-agent communication: each node is an independent agent analyzing the
+   scenario from its own perspective.
+2. Fan-out / fan-in: the Orchestrator parallelizes domain agents (fan-out) and
+   converges them into the Critic agent (fan-in).
+3. Grounded reasoning: retrieval-augmented context is fetched before the
+   simulation runs to reduce LLM hallucination.
 """
 from __future__ import annotations
 
@@ -113,13 +118,10 @@ def _get_other_agents_outputs(state: GraphState, current_agent: str) -> list[Age
 
 async def parse_scenario(state: GraphState) -> dict:
 	try:
-		# First, obtain the structured scenario context via the existing LLM call
+		# Obtain the structured scenario context via the orchestrator LLM call.
 		result = await call_agent(ORCHESTRATOR_PARSE_PROMPT, state["raw_input"])
 		context = ScenarioContext.model_validate(result)
-		# THEN request a factual snippet from Microsoft Foundry IQ using the raw input
-		from app.rag.foundry_iq import fetch_context
-		foundry_snippet = await fetch_context(state["raw_input"])
-		return {"scenario_context": context, "foundry_context": foundry_snippet}
+		return {"scenario_context": context}
 	except (AgentResponseError, ValidationError) as exc:
 		return {"error": str(exc)}
 
@@ -550,10 +552,10 @@ def _route_after_critic(state: GraphState) -> str:
 
 
 # ====================================================================================
-# AGENT / MULTI-AGENT SYSTEM (ADK) GRAPH COMPILATION
+# MULTI-AGENT GRAPH COMPILATION
 # ====================================================================================
-# We use a StateGraph to explicitly map out the multi-agent workflow.
-# This proves the architectural complexity required by the capstone evaluation rubric.
+# A StateGraph explicitly maps out the multi-agent workflow: parse -> historian ->
+# parallel domain agents -> critic -> (feedback loop) -> narrator.
 builder = StateGraph(GraphState)
 builder.add_node("parse_scenario", parse_scenario)
 builder.add_node("historian_node", historian_node)
