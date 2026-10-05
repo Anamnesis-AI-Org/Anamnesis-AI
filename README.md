@@ -8,6 +8,12 @@ It lets users test "what-if" scenarios across economy, technology, society, poli
 
 > Built with **LangGraph multi-agent orchestration**, a **retrieval-augmented (RAG) grounding layer**, a **critic/verification loop**, and deployed as a full-stack app (Next.js frontend + FastAPI backend). Everything runs on **free data sources and the Gemini free tier** — no paid services required.
 
+Repository: **[github.com/Anamnesis-AI-Org/Anamnesis-AI](https://github.com/Anamnesis-AI-Org/Anamnesis-AI)**
+
+```bash
+git clone https://github.com/Anamnesis-AI-Org/Anamnesis-AI.git
+```
+
 ---
 
 ## Core idea
@@ -76,8 +82,6 @@ The pipeline is a LangGraph `StateGraph` defined in `backend/app/orchestrator.py
 6. **narrator** — merges everything into a unified timeline, impact dashboard and final report.
 
 Post-processing adds a **causal graph**, **assumptions**, **grounding validations**, an **uncertainty score** and a **calibration score**.
-
----
 
 ---
 
@@ -196,9 +200,6 @@ docker compose up --build
 
 ---
 
-
----
-
 ## API reference
 
 | Method | Endpoint | Description |
@@ -233,7 +234,16 @@ curl -X POST http://127.0.0.1:8000/api/scenarios \
 The status page uses **polling** as the primary mechanism; the WebSocket stream is an enhancement that degrades gracefully if unavailable.
 
 ### Backend → Render
-Use the included `render.yaml` blueprint (Docker-based web service), or create a **Web Service** from `backend/Dockerfile`.
+Use the included `render.yaml` blueprint, or create a **Web Service** manually. Either way the Docker settings matter:
+
+| Setting | Value |
+|---|---|
+| Runtime | Docker |
+| Dockerfile path (from **repo root**) | `./backend/Dockerfile` |
+| Docker context | `./backend` |
+| Health check path | `/` |
+
+> `dockerfilePath` is resolved from the **repo root** while `dockerContext` is the directory handed to `docker build`, so both must point into `backend/`. The image binds to `$PORT` (Render sets `10000`), so no port edits are needed.
 
 ```env
 APP_ENV=production
@@ -243,8 +253,8 @@ GEMINI_API_KEY=your_gemini_key
 DATABASE_URL=<Supabase connection string (see below)>
 ```
 
-- Health check path: `/`
-- Free web services spin down on inactivity (cold start on first request).
+- Free web services spin down on inactivity (cold start on first request), and a full simulation takes ~2–4 minutes.
+- WebSockets are supported, so the live telemetry stream works in production.
 
 ### Database → Supabase (free tier)
 1. Create a Supabase project and copy the **connection string** from *Settings → Database* (Session pooler).

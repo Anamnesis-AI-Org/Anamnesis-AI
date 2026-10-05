@@ -19,4 +19,6 @@ ENV LOG_FORMAT=json
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Render (and most PaaS providers) inject a PORT env var (10000 on Render free)
+# and route traffic to it, so bind to $PORT and fall back to 8000 locally.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

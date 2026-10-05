@@ -5,7 +5,11 @@ services:
     name: anamnesis-ai-backend
     runtime: docker
     plan: free
-    rootDir: backend
+    # dockerfilePath is resolved from the REPO ROOT, and dockerContext is handed to
+    # `docker build`. Both point at backend/ so the Dockerfile's `COPY requirements.txt .`
+    # and `COPY . .` operate on the backend directory.
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     healthCheckPath: /
     envVars:
       - key: APP_ENV

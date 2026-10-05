@@ -33,6 +33,13 @@ if DATABASE_URL.startswith("postgres://"):
 elif DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = "postgresql+asyncpg://" + DATABASE_URL.removeprefix("postgresql://")
 
+# asyncpg (unlike psycopg) has no ``sslmode`` parameter — it expects ``ssl``.
+# Supabase connection strings are copied with ``?sslmode=require``, which
+# SQLAlchemy forwards verbatim to asyncpg and is rejected as an unexpected
+# keyword argument. Translate it so the pooler URL works as-is.
+if DATABASE_URL.startswith("postgresql+asyncpg://") and "sslmode=" in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("sslmode=", "ssl=")
+
 DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "5"))
 DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
 DB_CONNECT_TIMEOUT: int = int(os.getenv("DB_CONNECT_TIMEOUT", "5"))

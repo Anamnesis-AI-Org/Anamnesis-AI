@@ -88,14 +88,21 @@ async def adjust_scenario_parameters(
     adjustments_str = ", ".join([f"{k} set to {v}/100" for k, v in adjustments.items()])
     adjustment_feedback = f"ADJUSTED PARAMETER CONSTRAINTS: Shifting simulation environment variables: {adjustments_str}. Recalculate output accordingly."
 
-    # Copy of unified timeline for reference
-    historian_out = db_agent_outputs.get("historian")
-    historian_timeline = None
-    if historian_out and historian_out.structured_data:
-        # Load from historian structured data
-        events = historian_out.structured_data.get("timeline_events") or []
-        from app.schemas import TimelineEvent
-        historian_timeline = [TimelineEvent(year=ev["year"], event=ev["event"]) for ev in events]
+    # Historian baseline. The agent runners expect the Pydantic HistorianOutput
+    # schema (they call .model_dump_json() on it), so rebuild it from the stored
+    # SQLAlchemy AgentOutput row instead of passing the row directly.
+    historian_row = db_agent_outputs.get("historian")
+    historian_baseline: HistorianOutput | None = None
+    historian_timeline: list[TimelineEvent] | None = None
+    if historian_row is not None:
+        historian_timeline = [
+            TimelineEvent(year=ev.get("year", 2000), event=ev.get("event", ""))
+            for ev in ((historian_row.structured_data or {}).get("timeline_events") or [])
+        ]
+        historian_baseline = HistorianOutput(
+            analysis_text=historian_row.analysis_text or "",
+            timeline_events=historian_timeline,
+        )
 
     updated_outputs = {}
 
@@ -132,17 +139,17 @@ async def adjust_scenario_parameters(
 
         try:
             if agent_name == "economist":
-                res, docs, srcs = await run_economist(context, historian_out, other_summaries, adjustment_feedback, None)
+                res, docs, srcs = await run_economist(context, historian_baseline, other_summaries, adjustment_feedback, historian_timeline)
             elif agent_name == "technology":
-                res, docs, srcs = await run_technology(context, historian_out, other_summaries, adjustment_feedback, None)
+                res, docs, srcs = await run_technology(context, historian_baseline, other_summaries, adjustment_feedback, historian_timeline)
             elif agent_name == "society":
-                res, docs, srcs = await run_society(context, historian_out, other_summaries, adjustment_feedback, None)
+                res, docs, srcs = await run_society(context, historian_baseline, other_summaries, adjustment_feedback, historian_timeline)
             elif agent_name == "climate":
-                res, docs, srcs = await run_climate(context, historian_out, other_summaries, adjustment_feedback, None)
+                res, docs, srcs = await run_climate(context, historian_baseline, other_summaries, adjustment_feedback, historian_timeline)
             elif agent_name == "political":
-                res, docs, srcs = await run_political(context, historian_out, other_summaries, adjustment_feedback, None)
+                res, docs, srcs = await run_political(context, historian_baseline, other_summaries, adjustment_feedback, historian_timeline)
             elif agent_name == "energy":
-                res, docs, srcs = await run_energy(context, historian_out, other_summaries, adjustment_feedback, None)
+                res, docs, srcs = await run_energy(context, historian_baseline, other_summaries, adjustment_feedback, historian_timeline)
             else:
                 # Fallback: keep existing if agent runner is not importable
                 res = db_out

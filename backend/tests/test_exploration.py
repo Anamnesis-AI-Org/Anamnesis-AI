@@ -147,6 +147,26 @@ class TestExplorationParameterAdjustment:
             assert updated_report is not None
             assert updated_report.uncertainty_score is not None
 
+    async def test_adjust_actually_reruns_affected_agents(self, seeded_scenario):
+        """Affected agents must be genuinely re-run, not silently fall back.
+
+        Regression guard: the adjuster used to pass the SQLAlchemy AgentOutput
+        row where the agent runners expected a HistorianOutput, raising
+        ``AttributeError: 'AgentOutput' object has no attribute 'model_dump_json'``.
+        That error was swallowed by the per-agent try/except, so adjustments
+        returned HTTP 200 while leaving every agent's output untouched.
+        """
+        async with AsyncSessionLocal() as db:
+            result = await adjust_scenario_parameters(
+                db, seeded_scenario, {"resource_abundance": 80}
+            )
+
+        scores = {a["agent_name"]: a["impact_score"] for a in result["agent_outputs"]}
+        # The seeded DB score for the economist is 80 (stale). A genuine re-run
+        # produces the canned agent score, proving the runner was invoked.
+        assert scores["economist"] != 80
+        assert scores["economist"] == 40
+
     async def test_adjust_endpoint_success(self, client, seeded_scenario):
         resp = await client.post(
             f"/api/scenarios/{seeded_scenario}/adjust",
