@@ -9,10 +9,14 @@ import type { ScenarioStatusResponse } from "../../../lib/types";
 
 const AGENTS = [
   { key: "historian", label: "Historian Agent", description: "Tracing divergence pivot points and chronological shifts." },
-  { key: "climate", label: "Climate Agent", description: "Modeling precipitation, carbon sequestration, and biodiversity." },
   { key: "economist", label: "Economist Agent", description: "Simulating labor transitions, trade flows, and GDP variance." },
   { key: "technology", label: "Technology Agent", description: "Projecting alternate hardware/software engineering paths." },
   { key: "society", label: "Society Agent", description: "Tracing vocational shifts, demographics, and cultural dynamics." },
+  { key: "climate", label: "Climate Agent", description: "Modeling precipitation, carbon sequestration, and biodiversity." },
+  { key: "political", label: "Political Agent", description: "Evaluating governance structures, sovereignty, and civic outcomes." },
+  { key: "energy", label: "Energy Agent", description: "Modelling grids, resource capacity, and transition pathways." },
+  { key: "healthcare", label: "Healthcare Agent", description: "Tracking public health systems, life expectancy, and care capacity." },
+  { key: "demographics", label: "Demographics Agent", description: "Projecting population growth, urbanisation, and migration corridors." },
   { key: "critic", label: "Critic Agent", description: "Validating logic for internal timeline contradictions." }
 ];
 

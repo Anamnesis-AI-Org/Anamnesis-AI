@@ -20,10 +20,10 @@ const NODES = [
   },
   {
     id: "rag",
-    label: "Knowledge Retrieval",
+    label: "Knowledge Retrieval (RAG)",
     icon: Search,
-    desc: "Retrieves context from Wikipedia and arXiv abstracts to seed agent memories.",
-    details: "Yields: Seeding text files and vector database references."
+    desc: "Queries six free sources — Wikipedia, arXiv, World Bank, UN Data, NASA and NOAA — then chunks, embeds and re-ranks passages in ChromaDB.",
+    details: "Yields: a citation-rich reference block injected into every agent prompt."
   },
   {
     id: "historian",
@@ -34,17 +34,17 @@ const NODES = [
   },
   {
     id: "domains",
-    label: "Domain Cluster (Econ, Tech, Society, Climate)",
+    label: "Domain Cluster (8 Agents)",
     icon: Cpu,
-    desc: "Parallel agents analyzing secondary domain impacts and calculating impact indices.",
+    desc: "Economy, technology, society, climate, politics, energy, healthcare and demographics analyse the divergence in parallel, seeded by the Historian baseline.",
     details: "Outputs: individual analysis texts, timeline events, and impact scores (-100 to +100)."
   },
   {
     id: "critic",
     label: "Critic Agent",
     icon: ShieldAlert,
-    desc: "Audits timeline consistency, flags extreme projections, and scores overall plausibility.",
-    details: "Outputs: confidence_score (0-100), explanation, and risk notes list."
+    desc: "Audits timeline consistency, flags contradictions and extreme claims, and scores overall plausibility.",
+    details: "Outputs: confidence_score (0-100), per-agent confidences, risk notes. Below 75 it feeds notes back and the pipeline re-runs (max 2 iterations)."
   },
   {
     id: "narrator",

@@ -1,42 +1,42 @@
 "use client";
 
-import { Users, Mail, Globe, Bot, Palette, Server, Brain, ShieldCheck } from "lucide-react";
+import { Users, Globe, ExternalLink, Code, Palette, Server, Database, Brain } from "lucide-react";
 
 const TEAM = [
   {
     name: "Pratik Singh",
-    role: "Project Lead & Multi-Agent Systems Architect",
-    bio: "Led project vision, system architecture, agent orchestration design, simulation workflow planning, integration strategy, and overall coordination of the platform.",
-    icon: Bot,
+    role: "Frontend Development & Coordination",
+    bio: "Built the Next.js frontend — pages, components, state flow and the simulation/report experience — and kept the workflow moving through planning, review and integration across the project.",
+    icon: Code,
     color: "text-cyan-400 border-cyan-500/20 bg-cyan-500/5 group-hover:border-cyan-400/40"
   },
   {
     name: "Yashika Singh",
-    role: "Frontend & User Experience Engineer",
-    bio: "Designed user flows, interface layouts, interactive components, visual hierarchy, responsive design, and user experience optimization across the platform.",
+    role: "UI/UX & Interface Design",
+    bio: "Shaped the experience end to end: layout systems, theme and visual language, typography hierarchy, responsive behaviour and the interaction polish on every screen.",
     icon: Palette,
     color: "text-pink-400 border-pink-500/20 bg-pink-500/5 group-hover:border-pink-400/40"
   },
   {
     name: "Prabhat Vishwakarma",
-    role: "Backend & API Engineer",
-    bio: "Developed backend services, API endpoints, database integration, request handling, data persistence, and system communication layers.",
+    role: "API Endpoints & Data Sources",
+    bio: "Designed the REST endpoints the platform runs on and the data-source layer behind the agents, wiring Wikipedia, arXiv, World Bank, UN Data, NASA and NOAA into retrieval for grounded reasoning.",
     icon: Server,
     color: "text-amber-400 border-amber-500/20 bg-amber-500/5 group-hover:border-amber-400/40"
   },
   {
-    name: "Aryama Srivastava",
-    role: "AI Research & Knowledge Systems Engineer",
-    bio: "Worked on retrieval pipelines, knowledge integration, simulation logic, data grounding, source management, and agent reasoning support.",
-    icon: Brain,
-    color: "text-violet-400 border-violet-500/20 bg-violet-500/5 group-hover:border-violet-400/40"
+    name: "Ananya Singh",
+    role: "Database Systems",
+    bio: "Handled all database-related work: schema design, persistence of scenarios and reports, query paths, migrations and the data layer every simulation run reads and writes.",
+    icon: Database,
+    color: "text-emerald-400 border-emerald-500/20 bg-emerald-500/5 group-hover:border-emerald-400/40"
   },
   {
-    name: "Ananya Singh",
-    role: "Data Analytics & Quality Assurance Engineer",
-    bio: "Managed testing, validation, simulation evaluation, report quality checks, impact analysis review, and overall system reliability assessment.",
-    icon: ShieldCheck,
-    color: "text-emerald-400 border-emerald-500/20 bg-emerald-500/5 group-hover:border-emerald-400/40"
+    name: "Aryama Srivastava",
+    role: "Agentic AI & Intelligence Layer",
+    bio: "Worked on the research and core functionality of the agentic AI layer — the orchestrator, agent coordination and reasoning intelligence that drive multi-agent decision-making.",
+    icon: Brain,
+    color: "text-violet-400 border-violet-500/20 bg-violet-500/5 group-hover:border-violet-400/40"
   }
 ];
 
@@ -56,7 +56,9 @@ export default function ContactPage() {
             Meet the Team Behind Anamnesis-AI
           </h1>
           <p className="text-sm font-light text-slate-400 leading-relaxed max-w-3xl">
-            A multidisciplinary team combining AI, software engineering, research, and design to build intelligent alternate-reality simulations.
+            A multidisciplinary team spanning frontend engineering, UI/UX design, APIs and data
+            sources, database systems, and agentic AI research — together building an intelligent
+            alternate-reality simulation platform.
           </p>
         </div>
 
@@ -92,27 +94,28 @@ export default function ContactPage() {
           })}
         </div>
 
-        {/* Inquiry Card */}
+        {/* Source & Contributions Card */}
         <div className="rounded-2xl glass-panel p-8 shadow-2xl relative overflow-hidden">
-          <h2 className="text-lg font-bold text-white mb-2">Simulation & Integration Requests</h2>
+          <h2 className="text-lg font-bold text-white mb-2">Source Code & Contributions</h2>
           <p className="text-xs text-slate-400 leading-6 font-light mb-6">
-            Do you require customized agent installations (e.g. Political/Sovereign analysis nodes) or corporate dataset vectorization setups? Reach out via our channels below.
+            Anamnesis-AI is open source. Browse the codebase, report a bug, or suggest a feature —
+            everything lives in the public repository.
           </p>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <a href="mailto:research@anamnesis.ai" className="flex items-center gap-3 rounded-lg border border-white/5 bg-slate-950/45 p-4 hover:border-cyan-500/25 transition-colors">
-              <Mail className="h-5 w-5 text-cyan-400" />
+            <a href="https://github.com/Anamnesis-AI-Org/Anamnesis-AI" target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-lg border border-white/5 bg-slate-950/45 p-4 hover:border-cyan-500/25 transition-colors">
+              <Globe className="h-5 w-5 text-cyan-400" />
               <div>
-                <h4 className="text-xs font-bold text-slate-200">Email Inquiry</h4>
-                <span className="text-[9px] text-slate-500 font-mono">research@anamnesis.ai</span>
+                <h4 className="text-xs font-bold text-slate-200">GitHub Repository</h4>
+                <span className="text-[9px] text-slate-500 font-mono">Anamnesis-AI-Org/Anamnesis-AI</span>
               </div>
             </a>
-            
-            <a href="https://github.com/Praticksingh/Anamnesis-AI" target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-lg border border-white/5 bg-slate-950/45 p-4 hover:border-cyan-500/25 transition-colors">
-              <Globe className="h-5 w-5 text-violet-400" />
+
+            <a href="https://github.com/Anamnesis-AI-Org/Anamnesis-AI/issues" target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-lg border border-white/5 bg-slate-950/45 p-4 hover:border-cyan-500/25 transition-colors">
+              <ExternalLink className="h-5 w-5 text-violet-400" />
               <div>
-                <h4 className="text-xs font-bold text-slate-200">GitHub Portal</h4>
-                <span className="text-[9px] text-slate-500 font-mono">Review source & codebases</span>
+                <h4 className="text-xs font-bold text-slate-200">Issues & Requests</h4>
+                <span className="text-[9px] text-slate-500 font-mono">Report bugs and propose ideas</span>
               </div>
             </a>
           </div>

@@ -86,8 +86,8 @@ const AGENT_SHOWCASE = [
 
 const HOW_IT_WORKS = [
   { step: "01", name: "User Scenario", desc: "Submit an alternate history query or timeline modification request." },
-  { step: "02", name: "Retrieval (RAG)", desc: "Relevant research papers and context are dynamically loaded from academic libraries." },
-  { step: "03", name: "Agent Collab", desc: "Five domain agents process the divergence parallelly, calculating secondary impacts." },
+  { step: "02", name: "Retrieval (RAG)", desc: "Relevant context is loaded in parallel from six free sources — encyclopedias, research papers and public data portals." },
+  { step: "03", name: "Agent Collab", desc: "The Historian sets the baseline, then eight domain agents analyse the divergence in parallel, calculating secondary cross-domain impacts." },
   { step: "04", name: "Critic Validation", desc: "Critic audits timeline consistency and flags logical contradictions." },
   { step: "05", name: "Executive Report", desc: "A unified alternate timeline, risk log, and gauges dashboard are compiled." }
 ];

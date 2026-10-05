@@ -6,26 +6,32 @@ const PHASES = [
   {
     phase: "Phase 1",
     status: "Completed",
-    title: "RAG & Parallel Agent Mappings",
-    desc: "Deploy parallel simulation loops for climate, economic, technological, social, and critic verification, backed by Wikipedia and arXiv loaders."
+    title: "Grounded Multi-Agent Pipeline",
+    desc: "Nine domain agents plus a Critic running on a LangGraph fan-out/fan-in graph, grounded by RAG across six free sources (Wikipedia, arXiv, World Bank, UN Data, NASA, NOAA) stored in ChromaDB."
   },
   {
     phase: "Phase 2",
     status: "Completed",
-    title: "Custom Agent Prompt Weights",
-    desc: "Allow researchers to customize agent models, alter focus priorities, or add custom system prompts before launching simulations."
+    title: "Trust & Explainability Layer",
+    desc: "Causal graph extraction, assumption registry, per-agent grounding validation, and the confidence, uncertainty and calibration scores attached to every report."
   },
   {
     phase: "Phase 3",
     status: "Completed",
-    title: "Real-time Web Search Integrations",
-    desc: "Augment local databases with real-time web crawlers to grab breaking news or scientific papers to answer modern divergence queries."
+    title: "Exploration Lab & Branching",
+    desc: "Interactive Q&A over reports, structured agent debates, parameter re-simulation with sliders, timeline branching from any event, and side-by-side report comparison."
   },
   {
     phase: "Phase 4",
     status: "Completed",
-    title: "SaaS Workspaces & Collaborative Trees",
-    desc: "Introduce team workspaces, shared simulation dashboards, and nested timeline branch creations to collaborate on parallel history maps."
+    title: "Production Deployment",
+    desc: "Hosted on Vercel (frontend) with Render and Supabase (backend), full CI, and a 105-test suite covering the API, agents, RAG, simulation and validation layers."
+  },
+  {
+    phase: "Phase 5",
+    status: "Planned",
+    title: "Rate-Limit Hardening & Grounding Depth",
+    desc: "Honor Gemini retry delays with a request scheduler for the free-tier 15 req/min cap, and pass full source text (not just citations) into the grounding validator."
   }
 ];
 
@@ -42,10 +48,10 @@ export default function RoadmapPage() {
             <span>Development / Roadmap</span>
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-            Future Roadmap
+            Development Roadmap
           </h1>
           <p className="text-sm font-light text-slate-400">
-            Traces the scheduled timeline, upgrades, and phases planned for the Anamnesis-AI research platform.
+            What has been built so far, and what comes next for the Anamnesis-AI research platform.
           </p>
         </div>
 

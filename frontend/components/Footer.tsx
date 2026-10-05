@@ -68,7 +68,7 @@ export default function Footer() {
                 <Link href="/contact" className="hover:text-cyan-400 transition-colors">Meet the Team</Link>
               </li>
               <li>
-                <a href="https://github.com/Praticksingh/Anamnesis-AI" target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-cyan-400 transition-colors">
+                <a href="https://github.com/Anamnesis-AI-Org/Anamnesis-AI" target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-cyan-400 transition-colors">
                   GitHub Repository <ExternalLink className="h-3 w-3" />
                 </a>
               </li>

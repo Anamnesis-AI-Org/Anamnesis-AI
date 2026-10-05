@@ -195,7 +195,7 @@ function SimulationConfigContent() {
 
             <div className="flex items-center justify-between gap-4 pt-2 border-t border-white/5">
               <span className="text-[11px] font-light text-slate-500">
-                {parentId && eventId ? "Branch locks in pre-divergence events." : "Graph processes 5 domain agents & critic checks."}
+                {parentId && eventId ? "Branch locks in pre-divergence events." : "Graph runs 9 domain agents & critic checks."}
               </span>
               <button
                 type="button"

@@ -31,22 +31,51 @@ export default function MethodologyPage() {
             <h2 className="text-lg font-bold text-white">1. Knowledge Retrieval Layer (RAG)</h2>
           </div>
           <p className="text-xs text-slate-300 font-light leading-7">
-            Every simulation begins with dynamic context loading. Before any agent generates a single word, our retrieval system executes asynchronous searches across:
+            Every simulation begins with dynamic context loading. Before any agent generates a
+            single word, the retrieval system runs asynchronous queries across six free sources:
           </p>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="rounded-lg border border-white/5 bg-slate-950/40 p-5 space-y-2">
-              <h4 className="text-xs font-bold text-slate-200">Wikipedia Encyclopedia Loader</h4>
+              <h4 className="text-xs font-bold text-slate-200">Wikipedia</h4>
               <p className="text-[11px] text-slate-400 leading-5 font-light">
-                Fetches comprehensive summaries of key historical events, names, dates, and baseline policy records matching the query divergence point.
+                Historical events, figures, and baseline policy records around the divergence point.
               </p>
             </div>
             <div className="rounded-lg border border-white/5 bg-slate-950/40 p-5 space-y-2">
-              <h4 className="text-xs font-bold text-slate-200">arXiv Academic Abstract Loader</h4>
+              <h4 className="text-xs font-bold text-slate-200">arXiv</h4>
               <p className="text-[11px] text-slate-400 leading-5 font-light">
-                Retrieves technical papers regarding carbon capture, monetary models, battery chemistries, and computing architectures to anchor calculations in real science.
+                Research abstracts on economic models, climate science, and computing architectures.
+              </p>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-slate-950/40 p-5 space-y-2">
+              <h4 className="text-xs font-bold text-slate-200">World Bank</h4>
+              <p className="text-[11px] text-slate-400 leading-5 font-light">
+                GDP, population, electricity access, and CO₂ indicators to anchor economic claims.
+              </p>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-slate-950/40 p-5 space-y-2">
+              <h4 className="text-xs font-bold text-slate-200">UN Data</h4>
+              <p className="text-[11px] text-slate-400 leading-5 font-light">
+                Sustainable development and social indicators — SDG goals, literacy, life expectancy.
+              </p>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-slate-950/40 p-5 space-y-2">
+              <h4 className="text-xs font-bold text-slate-200">NASA</h4>
+              <p className="text-[11px] text-slate-400 leading-5 font-light">
+                Earth science and planetary data for long-horizon climate and technology context.
+              </p>
+            </div>
+            <div className="rounded-lg border border-white/5 bg-slate-950/40 p-5 space-y-2">
+              <h4 className="text-xs font-bold text-slate-200">NOAA</h4>
+              <p className="text-[11px] text-slate-400 leading-5 font-light">
+                Temperature, precipitation, and carbon records that ground environmental outcomes.
               </p>
             </div>
           </div>
+          <p className="text-xs text-slate-300 font-light leading-7">
+            Retrieved documents are chunked, embedded into ChromaDB, and re-ranked before the top
+            passages — with their source citations — are injected into every agent prompt.
+          </p>
         </section>
 
         {/* Section 2: Parallel Multi-Agent Mappings */}
@@ -58,18 +87,20 @@ export default function MethodologyPage() {
             <h2 className="text-lg font-bold text-white">2. Parallel Domain Collaboration</h2>
           </div>
           <p className="text-xs text-slate-300 font-light leading-7">
-            Agents process in parallel, but their prompts contain dependencies. The Historian establishes the core pivot year and milestones. In the next step, the Economist, Technology, Society, and Climate agents evaluate the secondary consequences of those milestones.
+            Agents process in a fan-out / fan-in graph. The Historian first reconstructs baseline reality and the divergence point. Eight domain agents — economy, technology, society, climate, politics, energy, healthcare and demographics — then evaluate the consequences in parallel, each contributing analysis text, timeline events and a −100 to +100 impact score.
           </p>
           
           {/* Horizontal workflow representation */}
           <div className="rounded-xl border border-white/5 bg-slate-950/60 p-5 space-y-3">
             <span className="text-[9px] font-bold uppercase tracking-wider text-cyan-400">Agent Flow Sequence</span>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-              <div className="font-semibold text-slate-200">Historian Pivot</div>
+              <div className="font-semibold text-slate-200">Historian Baseline</div>
               <ArrowRight className="hidden sm:block h-3.5 w-3.5 text-slate-700" />
-              <div className="font-semibold text-slate-200">Parallel Domain Analyses (Climate, Econ, Tech, Society)</div>
+              <div className="font-semibold text-slate-200">8 Parallel Domain Agents</div>
               <ArrowRight className="hidden sm:block h-3.5 w-3.5 text-slate-700" />
-              <div className="font-semibold text-slate-200">Critic Checking Cycle</div>
+              <div className="font-semibold text-slate-200">Critic Audit (+ feedback loop)</div>
+              <ArrowRight className="hidden sm:block h-3.5 w-3.5 text-slate-700" />
+              <div className="font-semibold text-slate-200">Narrator Synthesis</div>
             </div>
           </div>
         </section>
@@ -83,12 +114,16 @@ export default function MethodologyPage() {
             <h2 className="text-lg font-bold text-white">3. Critic Validation & Plausibility Scoring</h2>
           </div>
           <p className="text-xs text-slate-300 font-light leading-7">
-            The Critic Agent evaluates internal consistency. It checks whether the climate outcomes are consistent with the technological changes, and whether the economic projections are realistic given the social developments. The confidence score is computed based on these comparisons:
+            The Critic Agent audits all nine agent outputs together. It looks for cross-agent contradictions (for example, one agent implying rapid technological progress while another describes an unexplained economic collapse) and for unrealistic or extreme claims. From that audit it reports:
           </p>
           <div className="rounded-xl border border-white/5 bg-slate-950/60 p-5 space-y-3 text-xs font-mono leading-6 text-slate-400">
-            <div>• Extreme Projection Check: If an agent outputs an impact score &gt; 75, Plausibility drops by 20%.</div>
-            <div>• Domain Divergence Check: If there is a massive delta between two indices, Plausibility drops by 35% and warning flags are raised.</div>
+            <div>• confidence_score — one 0–100 rating for the whole simulation, with a written justification.</div>
+            <div>• agent_confidences — a separate 0–100 rating and explanation for each agent.</div>
+            <div>• risk_notes — 1–4 specific inconsistencies, unsupported claims or caveats.</div>
           </div>
+          <p className="text-xs text-slate-300 font-light leading-7">
+            If the overall confidence falls below the threshold (75), the Critic's notes are fed back and the pipeline re-runs — up to 2 iterations — before the Narrator compiles the report. After that, three deterministic checks complete the score: <strong className="text-slate-200">grounding</strong> (how well each analysis is supported by the retrieved sources), <strong className="text-slate-200">uncertainty</strong> (variance between the agents' impact scores) and <strong className="text-slate-200">calibration</strong> (chronological sanity of the unified timeline).
+          </p>
         </section>
       </div>
     </main>
