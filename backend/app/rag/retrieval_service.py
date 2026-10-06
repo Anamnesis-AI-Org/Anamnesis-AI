@@ -2,6 +2,7 @@ import logging
 import asyncio
 from app.rag.document_loader import WikipediaLoader, ResearchPaperLoader, HistoricalDatasetLoader, Document
 from app.rag.embedding_service import get_embedding_service
+from app.config import RAG_MAX_ARTICLES, RAG_MAX_PAPERS
 from app.schemas import ScenarioContext
 
 logger = logging.getLogger(__name__)
@@ -72,10 +73,10 @@ class RetrievalService:
         tasks = []
         
         # 1. Wikipedia (always active)
-        tasks.append(WikipediaLoader.load(wikipedia_query, max_articles=2))
+        tasks.append(WikipediaLoader.load(wikipedia_query, max_articles=RAG_MAX_ARTICLES))
         
         # 2. arXiv (always active)
-        tasks.append(ResearchPaperLoader.load(arxiv_query, max_papers=2))
+        tasks.append(ResearchPaperLoader.load(arxiv_query, max_papers=RAG_MAX_PAPERS))
         
         # 3. World Bank (for economy/history)
         if domain in ("economy", "history"):

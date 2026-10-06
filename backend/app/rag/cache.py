@@ -36,7 +36,11 @@ def init_cache():
         _in_memory_cache = {}
 
 def _save_cache():
-    """Write in-memory cache to disk."""
+    """Write in-memory cache to disk (skipped on ephemeral hosts)."""
+    from app.config import DISABLE_FILE_CACHE
+
+    if DISABLE_FILE_CACHE:
+        return
     try:
         if not CACHE_DIR.exists():
             CACHE_DIR.mkdir(parents=True, exist_ok=True)

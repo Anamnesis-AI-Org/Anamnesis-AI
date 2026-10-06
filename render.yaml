@@ -1,23 +1,26 @@
-# Render blueprint for the Anamnesis-AI FastAPI backend.
-# Free-tier web service built from the backend Dockerfile.
+# Render blueprint for the Anamnesis-AI FastAPI backend (Native Python, no Docker).
 services:
   - type: web
     name: anamnesis-ai-backend
-    runtime: docker
+    runtime: python
     plan: free
-    # dockerfilePath is resolved from the REPO ROOT, and dockerContext is handed to
-    # `docker build`. Both point at backend/ so the Dockerfile's `COPY requirements.txt .`
-    # and `COPY . .` operate on the backend directory.
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    branch: main
+    # Native Python service: Render installs from backend/ and runs uvicorn.
+    # Root directory support varies, so buildCommand cds into backend/.
+    buildCommand: cd backend && pip install --no-cache-dir -r requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
       - key: APP_ENV
         value: production
       - key: LOG_FORMAT
         value: json
       - key: LOG_LEVEL
         value: INFO
+      - key: WEB_CONCURRENCY
+        value: "1"
       - key: DATABASE_URL
         sync: false
       - key: GEMINI_API_KEY
@@ -25,4 +28,17 @@ services:
       - key: CORS_ORIGINS
         sync: false
       - key: MAX_CONCURRENT_SIMULATIONS
-        value: "5"
+        # Render free instances have 512MB RAM; running simulations serially
+        # prevents the RAG + 9-agent fan-out from exceeding it (OOM kills).
+        value: "1"
+      - key: DOMAIN_CONCURRENCY
+        # Domain agents run in small batches instead of 8-way parallel fan-out.
+        value: "2"
+      - key: RAG_MAX_ARTICLES
+        value: "1"
+      - key: RAG_MAX_PAPERS
+        value: "1"
+      - key: DISABLE_FILE_CACHE
+        # Render disks are ephemeral; skip JSON file persistence to save I/O + RAM.
+        value: "1"
+

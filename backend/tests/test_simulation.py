@@ -137,6 +137,24 @@ class TestAPIBranching:
     async def test_api_branch_scenario_success(self, client):
         # Register a parent scenario and report in db
         async with AsyncSessionLocal() as db_session:
+            from app.models import AgentOutput
+            # Defensive: clear leftovers from a previously interrupted run.
+            for model, key in ((FinalReport, "api-parent-sc"),):
+                existing = await db_session.execute(
+                    select(model).where(model.scenario_id == "api-parent-sc")
+                )
+                for row in existing.scalars().all():
+                    await db_session.delete(row)
+            existing_agents = await db_session.execute(
+                select(AgentOutput).where(AgentOutput.scenario_id == "api-parent-sc")
+            )
+            for row in existing_agents.scalars().all():
+                await db_session.delete(row)
+            existing_sc = await db_session.get(Scenario, "api-parent-sc")
+            if existing_sc:
+                await db_session.delete(existing_sc)
+            await db_session.commit()
+
             parent_scenario = Scenario(
                 id="api-parent-sc",
                 raw_input="What if Rome never fell?",
@@ -183,15 +201,33 @@ class TestAPIBranching:
             assert child_scenario.raw_input == "Branch of 'What if Rome never fell?' at year 1995 where: Roman roads are electrified instead of digitized"
             assert child_scenario.status in ("pending", "running", "done")
 
-            # Clean up
+            # Clean up (delete child rows; the branch endpoint queues a background
+            # simulation that also writes child AgentOutput/FinalReport rows).
+            from app.models import AgentOutput as _AgentOutput
+            child_agent_rows = await db_session.execute(
+                select(_AgentOutput).where(_AgentOutput.scenario_id == child_scenario_id)
+            )
+            for row in child_agent_rows.scalars().all():
+                await db_session.delete(row)
+            child_report_rows = await db_session.execute(
+                select(FinalReport).where(FinalReport.scenario_id == child_scenario_id)
+            )
+            child_report = child_report_rows.scalar_one_or_none()
+            if child_report:
+                await db_session.delete(child_report)
             await db_session.delete(child_scenario)
-            
+
             result = await db_session.execute(
                 select(FinalReport).where(FinalReport.scenario_id == "api-parent-sc")
             )
             p_rep_obj = result.scalar_one_or_none()
             if p_rep_obj:
                 await db_session.delete(p_rep_obj)
+            p_agents = await db_session.execute(
+                select(_AgentOutput).where(_AgentOutput.scenario_id == "api-parent-sc")
+            )
+            for row in p_agents.scalars().all():
+                await db_session.delete(row)
             p_sc = await db_session.get(Scenario, "api-parent-sc")
             if p_sc:
                 await db_session.delete(p_sc)

@@ -1,25 +1,28 @@
 """
 Core multi-agent orchestration for Anamnesis-AI.
 
-This module implements the simulation pipeline using LangGraph. It acts as the
-Orchestrator that decomposes a user scenario and manages the lifecycle and
-communication between the specialized domain agents (Historian, Economist,
-Technology, Society, Climate, Political, Energy, Healthcare, Demographics) and
-the Critic that converges their outputs.
+This module implements the simulation pipeline as a lightweight asyncio
+sequence (parse -> historian -> batched domain agents -> critic ->
+(feedback loop) -> narrator). It acts as the Orchestrator that decomposes a
+user scenario and manages the lifecycle and communication between the
+specialized domain agents (Historian, Economist, Technology, Society,
+Climate, Political, Energy, Healthcare, Demographics) and the Critic that
+converges their outputs.
 
 Design patterns:
-1. Agent-to-agent communication: each node is an independent agent analyzing the
-   scenario from its own perspective.
-2. Fan-out / fan-in: the Orchestrator parallelizes domain agents (fan-out) and
-   converges them into the Critic agent (fan-in).
+1. Agent-to-agent communication: each step is an independent agent analyzing
+   the scenario from its own perspective.
+2. Batched fan-out / fan-in: the Orchestrator runs domain agents in small
+   batches (DOMAIN_CONCURRENCY, default 2) and converges them into the
+   Critic agent (fan-in). An 8-way parallel fan-out OOM-killed Render's
+   512MB free instance, so full parallelism is intentionally avoided.
 3. Grounded reasoning: retrieval-augmented context is fetched before the
    simulation runs to reduce LLM hallucination.
 """
 from __future__ import annotations
 
 from statistics import mean
-from typing import Annotated, TypedDict
-from operator import add
+from typing import TypedDict
 
 from pydantic import ValidationError
 from typing_extensions import Required
@@ -59,12 +62,16 @@ from app.schemas import (
 
 from app.simulation.causal_graph import run_causal_modeling
 from app.simulation.assumption_tracker import run_assumption_extraction
-from app.validation.source_validator import run_source_validation
+from app.validation.source_validator import run_source_validation, validate_agent_grounding
 from app.validation.uncertainty import calculate_uncertainty
 from app.validation.calibration import calculate_calibration
 
-from langgraph.constants import END, START
-from langgraph.graph import StateGraph
+import asyncio
+import logging
+
+from app.config import DOMAIN_CONCURRENCY
+
+logger = logging.getLogger(__name__)
 
 def _merge_error(existing: str | None, new: str | None) -> str | None:
     """When multiple parallel agents fail in the same step, keep the first error."""
@@ -87,10 +94,10 @@ class GraphState(TypedDict, total=False):
 	demographics_output: DemographicsOutput | None
 	critic_output: CriticOutput | None
 	final_report: FinalReportSchema | None
-	error: Annotated[str | None, _merge_error]
-	# RAG lists accumulated via list concatenation (add reducer)
-	retrieved_documents: Annotated[list[str], add]
-	sources_consulted: Annotated[list[str], add]
+	error: str | None
+	# RAG lists accumulated across steps.
+	retrieved_documents: list[str]
+	sources_consulted: list[str]
 	iteration: int
 	critic_feedback: str | None
 	pre_divergence_timeline: list[UnifiedTimelineEvent] | None
@@ -557,79 +564,136 @@ def _route_after_critic(state: GraphState) -> str:
 
 
 # ====================================================================================
-# MULTI-AGENT GRAPH COMPILATION
+# SEQUENTIAL PIPELINE (replaces the LangGraph StateGraph)
 # ====================================================================================
-# A StateGraph explicitly maps out the multi-agent workflow: parse -> historian ->
-# parallel domain agents -> critic -> (feedback loop) -> narrator.
-builder = StateGraph(GraphState)
-builder.add_node("parse_scenario", parse_scenario)
-builder.add_node("historian_node", historian_node)
-builder.add_node("economist_node", economist_node)
-builder.add_node("technology_node", technology_node)
-builder.add_node("society_node", society_node)
-builder.add_node("climate_node", climate_node)
-builder.add_node("political_node", political_node)
-builder.add_node("energy_node", energy_node)
-builder.add_node("healthcare_node", healthcare_node)
-builder.add_node("demographics_node", demographics_node)
-builder.add_node("critic_node", critic_node)
-builder.add_node("generate_feedback", generate_feedback)
-builder.add_node("narrator_node", narrator_node)
+# The original StateGraph fanned out all 8 domain agents in parallel. Each
+# agent spawns blocking RAG fetch threads (wikipedia/arXiv `to_thread`) plus
+# LLM calls, so 8 at once plus a second queued simulation exceeded Render's
+# 512MB free tier and the instance was OOM-killed mid-run. The pipeline below
+# preserves the exact same stage order and outputs, but runs domain agents in
+# small batches (DOMAIN_CONCURRENCY) with a shared asyncio.Semaphore and runs
+# grounding validations sequentially.
 
-builder.add_edge(START, "parse_scenario")
-builder.add_conditional_edges("parse_scenario", _route_after_parse)
-builder.add_conditional_edges("historian_node", _route_after_historian)
-
-# Fan-in: all eight domain agent nodes converge into critic_node
-builder.add_edge(
-	[
-		"economist_node",
-		"technology_node",
-		"society_node",
-		"climate_node",
-		"political_node",
-		"energy_node",
-		"healthcare_node",
-		"demographics_node",
-	],
-	"critic_node"
+_DOMAIN_STEPS: tuple[tuple[str, str], ...] = (
+    ("economist_node", "economist"),
+    ("technology_node", "technology"),
+    ("society_node", "society"),
+    ("climate_node", "climate"),
+    ("political_node", "political"),
+    ("energy_node", "energy"),
+    ("healthcare_node", "healthcare"),
+    ("demographics_node", "demographics"),
 )
 
-builder.add_conditional_edges("critic_node", _route_after_critic)
+_NODE_FUNCS = {
+    "parse_scenario": parse_scenario,
+    "historian_node": historian_node,
+    "economist_node": economist_node,
+    "technology_node": technology_node,
+    "society_node": society_node,
+    "climate_node": climate_node,
+    "political_node": political_node,
+    "energy_node": energy_node,
+    "healthcare_node": healthcare_node,
+    "demographics_node": demographics_node,
+    "critic_node": critic_node,
+    "generate_feedback": generate_feedback,
+    "narrator_node": narrator_node,
+}
 
-# Loopback edge: feedback node re-triggers historian first
-builder.add_edge("generate_feedback", "historian_node")
 
-builder.add_edge("narrator_node", END)
+async def _run_domain_batch(
+    state: GraphState, sem: asyncio.Semaphore, batch: tuple[tuple[str, str], ...]
+) -> None:
+    """Run one batch of domain agent steps with bounded concurrency."""
 
-compiled_graph = builder.compile()
+    async def _one(node_name: str, agent_name: str) -> None:
+        async with sem:
+            try:
+                update = await _NODE_FUNCS[node_name](state)
+            except Exception as exc:  # keep first error, like _merge_error
+                logger.exception("Domain agent %s failed", agent_name)
+                if not state.get("error"):
+                    state["error"] = f"{agent_name} agent failed: {exc}"
+                return
+            state.update(update)
+
+    await asyncio.gather(*[_one(node, agent) for node, agent in batch])
 
 
 async def run_simulation_graph(
-	scenario_id: str,
-	raw_input: str,
-	pre_divergence_timeline: list[UnifiedTimelineEvent] | None = None,
+    scenario_id: str,
+    raw_input: str,
+    pre_divergence_timeline: list[UnifiedTimelineEvent] | None = None,
 ) -> GraphState:
-	initial_state: GraphState = {
-		"scenario_id": scenario_id,
-		"raw_input": raw_input,
-		"scenario_context": None,
-		"historian_output": None,
-		"economist_output": None,
-		"technology_output": None,
-		"society_output": None,
-		"climate_output": None,
-		"political_output": None,
-		"energy_output": None,
-		"healthcare_output": None,
-		"demographics_output": None,
-		"critic_output": None,
-		"final_report": None,
-		"error": None,
-		"retrieved_documents": [],
-		"sources_consulted": [],
-		"iteration": 0,
-		"critic_feedback": None,
-		"pre_divergence_timeline": pre_divergence_timeline,
-	}
-	return await compiled_graph.ainvoke(initial_state)
+    """Execute the full pipeline with bounded memory usage."""
+    state: GraphState = {
+        "scenario_id": scenario_id,
+        "raw_input": raw_input,
+        "scenario_context": None,
+        "historian_output": None,
+        "economist_output": None,
+        "technology_output": None,
+        "society_output": None,
+        "climate_output": None,
+        "political_output": None,
+        "energy_output": None,
+        "healthcare_output": None,
+        "demographics_output": None,
+        "critic_output": None,
+        "final_report": None,
+        "error": None,
+        "retrieved_documents": [],
+        "sources_consulted": [],
+        "iteration": 0,
+        "critic_feedback": None,
+        "pre_divergence_timeline": pre_divergence_timeline,
+    }
+
+    # 1. parse -> historian (sequential, establishes scenario + baseline).
+    for node_name in ("parse_scenario", "historian_node"):
+        update = await _NODE_FUNCS[node_name](state)
+        state.update(update)
+        route = (
+            _route_after_parse(state)
+            if node_name == "parse_scenario"
+            else _route_after_historian(state)
+        )
+        if route == "error":
+            return state
+
+    # 2. Batched domain fan-out (bounded concurrency instead of 8-way).
+    batch_size = max(1, DOMAIN_CONCURRENCY)
+    sem = asyncio.Semaphore(batch_size)
+    for i in range(0, len(_DOMAIN_STEPS), batch_size):
+        await _run_domain_batch(state, sem, _DOMAIN_STEPS[i : i + batch_size])
+        if state.get("error"):
+            return state
+
+    # 3. critic (+ optional feedback loop, max 2 iterations like before).
+    while True:
+        update = await critic_node(state)
+        state.update(update)
+        route = _route_after_critic(state)
+        if route == "generate_feedback":
+            update = await generate_feedback(state)
+            state.update(update)
+            # Loopback: re-run historian then the domain batches once more.
+            update = await historian_node(state)
+            state.update(update)
+            if _route_after_historian(state) == "error":
+                return state
+            for i in range(0, len(_DOMAIN_STEPS), batch_size):
+                await _run_domain_batch(state, sem, _DOMAIN_STEPS[i : i + batch_size])
+                if state.get("error"):
+                    return state
+            continue
+        break
+
+    if state.get("error"):
+        return state
+
+    # 4. narrator (assembles FinalReportSchema).
+    update = await narrator_node(state)
+    state.update(update)
+    return state

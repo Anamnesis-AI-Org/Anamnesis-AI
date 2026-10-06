@@ -71,7 +71,7 @@ def setup_logging() -> None:
     root.addHandler(handler)
 
     # Quieten noisy third-party loggers.
-    for name in ("httpcore", "httpx", "chromadb", "urllib3"):
+    for name in ("httpcore", "httpx", "urllib3"):
         logging.getLogger(name).setLevel(logging.WARNING)
 
     # google-genai logs an "automatic function calling is not recommended"

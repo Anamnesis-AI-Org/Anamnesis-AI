@@ -6,6 +6,11 @@ from app.schemas import ScenarioContext
 
 logger = logging.getLogger(__name__)
 
+# One decomposition per scenario: the 9 agent nodes share a ScenarioContext, so
+# without this cache every run burns 9 identical Gemini calls. keyed by the
+# scenario text + divergence year + horizon + domains.
+_decompose_cache: dict[str, dict[str, str]] = {}
+
 DECOMPOSER_PROMPT = """You are the search query optimizer for Anamnesis-AI.
 Your job is to decompose the user's alternate-reality scenario and divergence context into specific, highly targeted search queries for various search engines and database portals.
 
@@ -29,6 +34,14 @@ You must respond with ONLY a JSON object of the following format (do not include
 
 async def decompose_query(context: ScenarioContext) -> dict[str, str]:
     """Decompose high-level scenario context into search queries for different sources."""
+    cache_key = (
+        f"{context.scenario}|{context.divergence_year}|"
+        f"{context.time_horizon}|{','.join(context.focus_domains)}"
+    )
+    cached = _decompose_cache.get(cache_key)
+    if cached is not None:
+        logger.info("RAG Decomposer │ Cache HIT — reusing decomposed queries")
+        return cached
     user_content = (
         f"Scenario: {context.scenario}\n"
         f"Divergence Year: {context.divergence_year}\n"
@@ -60,11 +73,15 @@ async def decompose_query(context: ScenarioContext) -> dict[str, str]:
                 decomposed[key] = val
         
         logger.info("RAG Decomposer │ Successfully decomposed queries into %d sources", len(decomposed))
+        _decompose_cache[cache_key] = decomposed
+        # Bound the cache so a long-lived process cannot grow without limit.
+        if len(_decompose_cache) > 32:
+            _decompose_cache.pop(next(iter(_decompose_cache)))
         return decomposed
     except Exception as e:
         logger.error("RAG Decomposer │ Decomposer failed: %s. Using default queries.", e)
         # Complete fallback
-        return {
+        fallback = {
             "wikipedia": f"{context.scenario} history {context.divergence_year}",
             "worldbank": "economic metrics GDP",
             "un_data": "sustainable development index",
@@ -72,3 +89,5 @@ async def decompose_query(context: ScenarioContext) -> dict[str, str]:
             "noaa": "precipitation weather records",
             "arxiv": "simulation counterfactual model"
         }
+        _decompose_cache[cache_key] = fallback
+        return fallback

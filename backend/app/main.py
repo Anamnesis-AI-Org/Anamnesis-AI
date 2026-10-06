@@ -10,6 +10,7 @@ Key design patterns:
 2. Realtime telemetry: a WebSocket channel streams live agent progress to the UI.
 """
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -17,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.config import CORS_ORIGINS, MAX_INPUT_LENGTH
+from app.config import CORS_ORIGINS, MAX_CONCURRENT_SIMULATIONS, MAX_INPUT_LENGTH
 from app.database import AsyncSessionLocal, create_tables, db_health_check, get_db
 from app.logging_config import setup_logging
 from app.models import AgentOutput, FinalReport, Scenario
@@ -252,7 +253,50 @@ async def adjust_scenario(
 
 
 
-async def run_simulation_background(scenario_id: str, pre_divergence_timeline_data: list[dict] | None = None):
+_sim_semaphore: asyncio.Semaphore | None = None
+_sim_semaphore_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_simulation_semaphore() -> asyncio.Semaphore:
+    """Return the run limiter, re-binding it if the event loop changes.
+
+    Created lazily so pytest (a fresh event loop per test) and uvicorn
+    (one long-lived loop) both work. On the server the semaphore enforces
+    ``MAX_CONCURRENT_SIMULATIONS``.
+    """
+    global _sim_semaphore, _sim_semaphore_loop
+    loop = asyncio.get_running_loop()
+    if _sim_semaphore is None or _sim_semaphore_loop is not loop:
+        _sim_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SIMULATIONS)
+        _sim_semaphore_loop = loop
+    return _sim_semaphore
+
+
+async def run_simulation_background(
+    scenario_id: str, pre_divergence_timeline_data: list[dict] | None = None
+) -> None:
+    """Queue entry point: serialises simulation runs to cap peak memory.
+
+    Each simulation fans out 9 agents plus RAG inside a single process. On
+    Render's 512MB free instance, two concurrent runs exceeded the memory
+    limit and the instance was OOM-killed — permanently orphaning those
+    scenarios in "running" state. Queued scenarios stay "pending" until a
+    slot frees up, so the browser never gets stuck on a dead run.
+    """
+    semaphore = _get_simulation_semaphore()
+    if semaphore.locked():
+        logger.info(
+            "Simulation queue | scenario %s queued behind an active run (MAX_CONCURRENT_SIMULATIONS=%d)",
+            scenario_id,
+            MAX_CONCURRENT_SIMULATIONS,
+        )
+    async with semaphore:
+        await _run_simulation_impl(scenario_id, pre_divergence_timeline_data)
+
+
+async def _run_simulation_impl(
+    scenario_id: str, pre_divergence_timeline_data: list[dict] | None = None
+) -> None:
     from app.telemetry import current_scenario_id, broadcast_log
     current_scenario_id.set(str(scenario_id))
 

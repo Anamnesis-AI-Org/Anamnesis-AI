@@ -1,6 +1,5 @@
 import json
 import logging
-import asyncio
 from pydantic import ValidationError
 from app.llm_client import AgentResponseError, call_agent
 from app.prompts import SOURCE_VALIDATION_PROMPT
@@ -53,10 +52,15 @@ async def validate_agent_grounding(agent_output: AgentOutputSummary, retrieved_d
 
 
 async def run_source_validation(agent_outputs: list[AgentOutputSummary], retrieved_docs: list[str]) -> list[GroundingValidation]:
-    """Run source-grounded fact-checking for all domain agents in parallel."""
+    """Run source-grounded fact-checking for all domain agents sequentially.
+
+    Sequential execution keeps peak memory flat on the 512MB free tier and
+    also avoids bursting past the Gemini free-tier rate limit (15 req/min).
+    """
     if not agent_outputs:
         return []
 
-    # Run in parallel
-    tasks = [validate_agent_grounding(out, retrieved_docs) for out in agent_outputs]
-    return await asyncio.gather(*tasks)
+    results: list[GroundingValidation] = []
+    for out in agent_outputs:
+        results.append(await validate_agent_grounding(out, retrieved_docs))
+    return results

@@ -1,132 +1,188 @@
-import os
+"""embedding_service.py — Lightweight in-memory lexical retrieval index.
+
+ChromaDB's default embedding pipeline pulls in ONNX Runtime and loads an
+embedding model into RAM, which pushed the Render free tier (512MB) over its
+limit mid-simulation ("Instance failed: Ran out of memory"). This module
+replaces it with a bounded pure-Python TF-IDF cosine index:
+
+* no native dependencies, no model loading, no external services;
+* a hard document cap so a long-running instance cannot grow without bound;
+* candidate hits are handed to ``rag.reranker`` for Jaccard/term-frequency
+  re-ranking, so the passages injected into agent prompts stay relevant.
+"""
+
+from __future__ import annotations
+
 import logging
+import math
+import re
+from collections import Counter, OrderedDict
+from threading import Lock
+
 from app.rag.document_loader import Document
 
 logger = logging.getLogger(__name__)
 
-try:
-    import chromadb
-    HAS_CHROMA = True
-except ImportError:
-    chromadb = None
-    HAS_CHROMA = False
-    logger.warning("chromadb package not installed. EmbeddingService will run in memory mock mode.")
+# Enough for the seeded historical dataset plus a couple of scenarios' worth of
+# chunks, while staying within a few MB of RAM.
+MAX_DOCUMENTS = 300
 
-_client = None
-_collection = None
+_TOKEN_RE = re.compile(r"\b\w{3,25}\b", re.IGNORECASE)
+
+_STOPWORDS = frozenset(
+    """
+    the and for that with this from into upon which their there than then when
+    what where while about after before between during under over further once
+    here why how all any both each few more most other some such only own same
+    so very can will just should now also across an are was were be been being
+    has have had do does did not but if as at by to is in of or
+    """.split()
+)
 
 
-def get_embedding_service():
-    global _client, _collection
-    if HAS_CHROMA and chromadb is not None:
-        if _client is None:
-            try:
-                db_path = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-                    "chroma_db"
-                )
-                _client = chromadb.PersistentClient(path=db_path)
-                _collection = _client.get_or_create_collection(
-                    name="rag_documents", 
-                    metadata={"hnsw:space": "cosine"}
-                )
-            except Exception as e:
-                logger.error("Failed to initialize ChromaDB: %s", e)
-                return MockEmbeddingService()
-        return EmbeddingService()
-    else:
-        return MockEmbeddingService()
+def _tokenize(text: str) -> list[str]:
+    """Lower-case keyword tokens with stop-words removed."""
+    return [
+        token
+        for token in (match.group(0).lower() for match in _TOKEN_RE.finditer(text))
+        if token not in _STOPWORDS
+    ]
 
 
 class EmbeddingService:
-    def add_documents(self, docs: list[Document]):
-        global _collection
-        if not docs or _collection is None:
+    """Bounded in-memory TF-IDF index scored with cosine similarity."""
+
+    def __init__(self, max_documents: int = MAX_DOCUMENTS):
+        self._max_documents = max_documents
+        self._lock = Lock()
+        # doc id -> Document, insertion ordered for FIFO eviction.
+        self._docs: OrderedDict[str, Document] = OrderedDict()
+        # doc id -> term frequency counter.
+        self._term_freq: dict[str, Counter] = {}
+        # term -> number of documents containing that term.
+        self._doc_freq: Counter = Counter()
+        # doc id -> total token count (for length normalisation).
+        self._doc_len: dict[str, int] = {}
+
+    # ── indexing ───────────────────────────────────────────────────────────
+
+    def add_documents(self, docs: list[Document]) -> None:
+        if not docs:
             return
-        
-        ids = [doc.id for doc in docs]
-        documents = [doc.content for doc in docs]
-        metadatas = [doc.metadata for doc in docs]
-        
-        try:
-            _collection.upsert(
-                ids=ids,
-                documents=documents,
-                metadatas=metadatas
-            )
-        except Exception as e:
-            logger.error("Failed to upsert documents in ChromaDB: %s", e)
+        with self._lock:
+            for doc in docs:
+                if doc.id in self._docs:
+                    self._docs.move_to_end(doc.id)
+                    continue
+                counter = Counter(_tokenize(doc.content))
+                self._docs[doc.id] = doc
+                self._term_freq[doc.id] = counter
+                self._doc_len[doc.id] = sum(counter.values())
+                self._doc_freq.update(counter.keys())
+            self._evict()
+
+    def _evict(self) -> None:
+        """Drop the oldest documents so RAM stays bounded."""
+        while len(self._docs) > self._max_documents:
+            old_id, _ = self._docs.popitem(last=False)
+            freq = self._term_freq.pop(old_id, {})
+            self._doc_len.pop(old_id, None)
+            if freq:
+                self._doc_freq.subtract(freq.keys())
+                for term in [t for t, n in self._doc_freq.items() if n <= 0]:
+                    del self._doc_freq[term]
+
+    # ── querying ───────────────────────────────────────────────────────────
 
     def query_similar(self, query: str, n_results: int = 3) -> list[dict]:
-        global _collection
-        if _collection is None:
-            return []
+        query_tokens = _tokenize(query)
+        with self._lock:
+            if not self._docs:
+                return []
 
-        try:
-            results = _collection.query(
-                query_texts=[query],
-                n_results=n_results
-            )
+            ranked = self._rank(query_tokens)
+            if not ranked:
+                # No lexical match (e.g. stop-word-only query): fall back to
+                # the most recently indexed documents so the agent always
+                # receives some grounding context.
+                ranked = [
+                    (doc_id, 0.0) for doc_id in reversed(list(self._docs))
+                ][:n_results]
+
             hits = []
-            if results and results.get("documents") and results["documents"][0]:
-                documents = results["documents"][0]
-                metadatas = results["metadatas"][0]
-                ids = results["ids"][0]
-                distances = (
-                    results["distances"][0] 
-                    if "distances" in results and results["distances"] 
-                    else [0.0] * len(ids)
+            for doc_id, score in ranked[:n_results]:
+                doc = self._docs[doc_id]
+                hits.append(
+                    {
+                        "id": doc.id,
+                        "content": doc.content,
+                        "metadata": doc.metadata,
+                        # The re-ranker treats smaller distance as better
+                        # (similarity = 1 / (1 + distance)); mirror cosine
+                        # distance here so scoring stays consistent.
+                        "distance": max(0.0, 1.0 - score),
+                    }
                 )
-                for i in range(len(ids)):
-                    hits.append({
-                        "id": ids[i],
-                        "content": documents[i],
-                        "metadata": metadatas[i],
-                        "distance": distances[i]
-                    })
             return hits
-        except Exception as e:
-            logger.error("Failed to query ChromaDB: %s", e)
+
+    def _rank(self, query_tokens: list[str]) -> list[tuple[str, float]]:
+        """Score documents against the query with TF-IDF cosine similarity."""
+        if not query_tokens:
+            return []
+        n_docs = len(self._docs)
+        query_counts = Counter(query_tokens)
+
+        idf: dict[str, float] = {
+            term: math.log(1.0 + n_docs / self._doc_freq[term])
+            for term in query_counts
+            if self._doc_freq.get(term)
+        }
+        if not idf:
             return []
 
+        query_weights = {term: query_counts[term] * idf[term] for term in idf}
+        query_norm = math.sqrt(sum(w * w for w in query_weights.values())) or 1.0
 
-class MockEmbeddingService:
-    """Fallback in-memory mock service when ChromaDB is unavailable."""
-    def __init__(self):
-        self.documents = {}
+        # Accumulate dot products over the query vocabulary only.
+        dots: dict[str, float] = {}
+        for term, q_weight in query_weights.items():
+            for doc_id, freq in self._term_freq.items():
+                tf = freq.get(term)
+                if not tf:
+                    continue
+                doc_len = self._doc_len.get(doc_id) or 1
+                dots[doc_id] = dots.get(doc_id, 0.0) + q_weight * (tf / doc_len) * idf[term]
 
-    def add_documents(self, docs: list[Document]):
-        for doc in docs:
-            self.documents[doc.id] = doc
+        if not dots:
+            return []
 
-    def query_similar(self, query: str, n_results: int = 3) -> list[dict]:
-        # Simple sub-string matching search fallback
-        hits = []
-        words = query.lower().split()
-        for doc_id, doc in self.documents.items():
-            match_score = sum(1 for w in words if w in doc.content.lower())
-            if match_score > 0:
-                hits.append((match_score, doc))
-        
-        # Sort by match score descending
-        hits.sort(key=lambda x: x[0], reverse=True)
-        
-        results = []
-        for _, doc in hits[:n_results]:
-            results.append({
-                "id": doc.id,
-                "content": doc.content,
-                "metadata": doc.metadata,
-                "distance": 0.0
-            })
-        
-        # If no dynamic hits found, return the first few default documents
-        if not results:
-            for doc in list(self.documents.values())[:n_results]:
-                results.append({
-                    "id": doc.id,
-                    "content": doc.content,
-                    "metadata": doc.metadata,
-                    "distance": 0.0
-                })
-        return results
+        ranked: list[tuple[str, float]] = []
+        for doc_id, dot in dots.items():
+            freq = self._term_freq[doc_id]
+            doc_len = self._doc_len.get(doc_id) or 1
+            norm_sq = sum(
+                ((tf / doc_len) * idf[term]) ** 2
+                for term, tf in freq.items()
+                if term in idf
+            )
+            norm = math.sqrt(norm_sq) or 1.0
+            ranked.append((doc_id, dot / (query_norm * norm)))
+
+        ranked.sort(key=lambda item: item[1], reverse=True)
+        return ranked
+
+
+_service: EmbeddingService | None = None
+
+
+def get_embedding_service() -> EmbeddingService:
+    """Return the process-wide singleton index (persists across scenarios)."""
+    global _service
+    if _service is None:
+        _service = EmbeddingService()
+        logger.info(
+            "RAG Index | in-memory TF-IDF index initialised (cap=%d documents)",
+            MAX_DOCUMENTS,
+        )
+    return _service
+

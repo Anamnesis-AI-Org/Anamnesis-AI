@@ -40,9 +40,9 @@ elif DATABASE_URL.startswith("postgresql://"):
 if DATABASE_URL.startswith("postgresql+asyncpg://") and "sslmode=" in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("sslmode=", "ssl=")
 
-DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "5"))
-DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
-DB_CONNECT_TIMEOUT: int = int(os.getenv("DB_CONNECT_TIMEOUT", "5"))
+DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "2"))
+DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "2"))
+DB_CONNECT_TIMEOUT: int = int(os.getenv("DB_CONNECT_TIMEOUT", "10"))
 
 
 # ── LLM Providers ────────────────────────────────────────────────────────────
@@ -85,6 +85,22 @@ MAX_CONCURRENT_SIMULATIONS: int = int(os.getenv("MAX_CONCURRENT_SIMULATIONS", "1
 # Critic loop controls
 CRITIC_CONFIDENCE_THRESHOLD: int = int(os.getenv("CRITIC_CONFIDENCE_THRESHOLD", "75"))
 CRITIC_MAX_ITERATIONS: int = int(os.getenv("CRITIC_MAX_ITERATIONS", "2"))
+
+
+# ── Memory tuning (Render free = 512MB) ───────────────────────────────────────
+
+# Domain agents run in small batches instead of an 8-way parallel fan-out.
+# Each agent fans out RAG fetch threads + LLM calls; 8 at once OOM-kills.
+DOMAIN_CONCURRENCY: int = int(os.getenv("DOMAIN_CONCURRENCY", "2"))
+# Cap RAG fetch sizes so arXiv/Wikipedia payloads stay small.
+RAG_MAX_ARTICLES: int = int(os.getenv("RAG_MAX_ARTICLES", "1"))
+RAG_MAX_PAPERS: int = int(os.getenv("RAG_MAX_PAPERS", "1"))
+# Render disks are ephemeral — skip JSON file cache persistence to save I/O + RAM.
+DISABLE_FILE_CACHE: bool = os.getenv("DISABLE_FILE_CACHE", "0").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 # ── ChromaDB ──────────────────────────────────────────────────────────────────
