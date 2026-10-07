@@ -68,6 +68,7 @@ from app.validation.calibration import calculate_calibration
 
 import asyncio
 import logging
+import re
 
 from app.config import DOMAIN_CONCURRENCY
 
@@ -77,6 +78,74 @@ def _merge_error(existing: str | None, new: str | None) -> str | None:
     """When multiple parallel agents fail in the same step, keep the first error."""
     return existing or new
 
+
+
+
+def _agent_name_map() -> dict[str, str]:
+    """Map snake_case node names to the short agent names used elsewhere."""
+    return {
+        "historian_node": "historian",
+        "economist_node": "economist",
+        "technology_node": "technology",
+        "society_node": "society",
+        "climate_node": "climate",
+        "political_node": "political",
+        "energy_node": "energy",
+        "healthcare_node": "healthcare",
+        "demographics_node": "demographics",
+    }
+
+
+def _match_agents(raw_input: str) -> list[str]:
+    """Pick the agents that should run for a scenario.
+
+    Keyword matching against the user's scenario text. A domain with no
+    keyword match is skipped entirely. Historian always runs (baseline);
+    the critic always runs afterwards (converges whatever agents ran).
+    """
+    text = raw_input.lower()
+    name_map = _agent_name_map()
+    matched: list[str] = []
+    seen: set[str] = set()
+
+    keywords = [
+        (r"\beconomy\b|\beconomic\b|\bgdp\b", "economist"),
+        (r"\btrade\b|tariff|trade deficit|trade surplus", "economist"),
+        (r"\binflation\b|recession|unemployment", "economist"),
+        (r"\bcurrency\b|exchange rate|devaluation", "economist"),
+        (r"\bfinance\b|market\b|fiscal\b|monetary\b|tax\b|revenue|deficit", "economist"),
+        (r"\bhealth\b|healthcare|hospital|epidemic|pandemic|epidemiology|outbreak", "healthcare"),
+        (r"\bdisease\b|infection|mortality|life expectancy|public health", "healthcare"),
+        (r"\bclimate\b|global warming|greenhouse", "climate"),
+        (r"\benvironment\b|emission|carbon\s*footprint|biodiversity|deforestation", "climate"),
+        (r"\bwarming\b|ice\s*cover|sea\s*level|temperature\s*rise", "climate"),
+        (r"\bflood\b|drought|wildfire|extreme weather", "climate"),
+        (r"\benergy\b|electricity|\boil\b|\bgas\b|fuel|renewable|coal|power grid", "energy"),
+        (r"\bpolitical\b|politics|election|government|\bpolicy\b|\bvote\b", "political"),
+        (r"\bprime minister\b|president|chancellor|legislature|parliament", "political"),
+        (r"\bwar\b|civil\s*war|conflict|invasion|border|peace treaty|sanction", "political"),
+        (r"\bsociety\b|population|culture|social\b|immigration|citizen", "society"),
+        (r"\beducation\b|literacy|inequality|\bgini\b", "society"),
+        (r"demograph|migration|urbanization|fertility|aging|birth rate|death rate", "demographics"),
+        (r"\btechnology\b|innovation|\bai\b|artificial\s*intelligence|internet\b|\btech\b", "technology"),
+        (r"bio\s*tech|biometric|cloud\b|automation|robot\b|space\b", "technology"),
+        (r"machine learning|data\s*center|semiconductor", "technology"),
+    ]
+
+    for pattern, name in keywords:
+        if re.search(pattern, text) and name not in seen:
+            seen.add(name)
+            matched.append(name)
+
+    if "historian" not in seen:
+        seen.add("historian")
+        matched.append("historian")
+
+    ordered: list[str] = []
+    for name in name_map.values():
+        if name in seen:
+            ordered.append(name)
+    return ordered
 
 
 class GraphState(TypedDict, total=False):
@@ -101,6 +170,7 @@ class GraphState(TypedDict, total=False):
 	iteration: int
 	critic_feedback: str | None
 	pre_divergence_timeline: list[UnifiedTimelineEvent] | None
+	matched_agents: list[str]
 
 
 def _get_other_agents_outputs(state: GraphState, current_agent: str) -> list[AgentOutputSummary]:
@@ -345,62 +415,65 @@ async def critic_node(state: GraphState) -> dict:
 	if state.get("error"):
 		return {"error": state["error"]}
 
-	if not all(
-		[
-			state.get("historian_output"),
-			state.get("economist_output"),
-			state.get("technology_output"),
-			state.get("society_output"),
-			state.get("climate_output"),
-			state.get("political_output"),
-			state.get("energy_output"),
-			state.get("healthcare_output"),
-			state.get("demographics_output"),
-		]
-	):
-		return {"error": "critic skipped because one or more agent outputs are missing"}
+	# Only agents that were selected to run must have outputs; skipped agents
+	# stay None in state and are forwarded to the critic as None.
+	run_names = state.get("matched_agents") or list(_agent_name_map().values())
+	missing: list[str] = []
+	if not state.get("historian_output"):
+		missing.append("historian")
+	for name in run_names:
+		if name != "historian" and not state.get(f"{name}_output"):
+			missing.append(name)
+	if missing:
+		return {"error": "critic skipped because agent outputs are missing: " + ", ".join(missing)}
+
+	def _out(name: str):
+		if name == "historian":
+			return state.get("historian_output")
+		return state.get(f"{name}_output")
 
 	try:
 		result = await run_critic(
-			state["historian_output"],
-			state["economist_output"],
-			state["technology_output"],
-			state["society_output"],
-			state["climate_output"],
-			state["political_output"],
-			state["energy_output"],
-			state["healthcare_output"],
-			state["demographics_output"],
+			historian=state["historian_output"],
+			economist=_out("economist"),
+			technology=_out("technology"),
+			society=_out("society"),
+			climate=_out("climate"),
+			political=_out("political"),
+			energy=_out("energy"),
+			healthcare=_out("healthcare"),
+			demographics=_out("demographics"),
 		)
 		return {"critic_output": result}
 	except AgentResponseError as exc:
 		return {"error": f"critic failed: {str(exc)}"}
 
-
 async def narrator_node(state: GraphState) -> dict:
 	scenario_context = state["scenario_context"]
-	historian_output = state["historian_output"]
-	economist_output = state["economist_output"]
-	technology_output = state["technology_output"]
-	society_output = state["society_output"]
-	climate_output = state["climate_output"]
-	political_output = state["political_output"]
-	energy_output = state["energy_output"]
-	healthcare_output = state["healthcare_output"]
-	demographics_output = state["demographics_output"]
 	critic_output = state["critic_output"]
+
+	# Collect only the agent outputs that actually ran (conditional
+	# participation): skipped domain agents stay None in state.
+	agent_outputs = {
+		name: state.get(key)
+		for name, key in (
+			("historian", "historian_output"),
+			("economist", "economist_output"),
+			("technology", "technology_output"),
+			("society", "society_output"),
+			("climate", "climate_output"),
+			("political", "political_output"),
+			("energy", "energy_output"),
+			("healthcare", "healthcare_output"),
+			("demographics", "demographics_output"),
+		)
+	}
+	agent_outputs = {name: out for name, out in agent_outputs.items() if out is not None}
+	historian_output = agent_outputs["historian"]
 
 	# Unify timeline via timeline engine
 	alternate_timeline = create_unified_timeline({
-		"historian": historian_output.timeline_events,
-		"economist": economist_output.timeline_events,
-		"technology": technology_output.timeline_events,
-		"society": society_output.timeline_events,
-		"climate": climate_output.timeline_events,
-		"political": political_output.timeline_events,
-		"energy": energy_output.timeline_events,
-		"healthcare": healthcare_output.timeline_events,
-		"demographics": demographics_output.timeline_events,
+		name: out.timeline_events for name, out in agent_outputs.items()
 	})
 
 	# If we have a pre-divergence timeline, prepend its events and filter new events
@@ -414,14 +487,16 @@ async def narrator_node(state: GraphState) -> dict:
 
 	# Assign unique IDs, preserving pre-existing IDs
 	existing_ids = {ev.id for ev in alternate_timeline if ev.id}
-	for idx, ev in enumerate(alternate_timeline):
+	idx = 0
+	for ev in alternate_timeline:
 		if not ev.id:
 			new_id = f"ev-{idx}"
 			while new_id in existing_ids:
 				idx += 1
 				new_id = f"ev-{idx}"
-			ev.id = new_id
 			existing_ids.add(new_id)
+			ev.id = new_id
+		idx += 1
 
 	# Deduplicate and sort RAG references
 	retrieved_documents = sorted(list(set(state.get("retrieved_documents", []))))
@@ -429,59 +504,12 @@ async def narrator_node(state: GraphState) -> dict:
 
 	agent_outputs_summaries = [
 		AgentOutputSummary(
-			agent_name=historian_output.agent_name,
-			analysis_text=historian_output.analysis_text,
-			timeline_events=historian_output.timeline_events,
-			impact_score=None,
-		),
-		AgentOutputSummary(
-			agent_name=economist_output.agent_name,
-			analysis_text=economist_output.analysis_text,
-			timeline_events=economist_output.timeline_events,
-			impact_score=economist_output.impact_score,
-		),
-		AgentOutputSummary(
-			agent_name=technology_output.agent_name,
-			analysis_text=technology_output.analysis_text,
-			timeline_events=technology_output.timeline_events,
-			impact_score=technology_output.impact_score,
-		),
-		AgentOutputSummary(
-			agent_name=society_output.agent_name,
-			analysis_text=society_output.analysis_text,
-			timeline_events=society_output.timeline_events,
-			impact_score=society_output.impact_score,
-		),
-		AgentOutputSummary(
-			agent_name=climate_output.agent_name,
-			analysis_text=climate_output.analysis_text,
-			timeline_events=climate_output.timeline_events,
-			impact_score=climate_output.impact_score,
-		),
-		AgentOutputSummary(
-			agent_name=political_output.agent_name,
-			analysis_text=political_output.analysis_text,
-			timeline_events=political_output.timeline_events,
-			impact_score=political_output.impact_score,
-		),
-		AgentOutputSummary(
-			agent_name=energy_output.agent_name,
-			analysis_text=energy_output.analysis_text,
-			timeline_events=energy_output.timeline_events,
-			impact_score=energy_output.impact_score,
-		),
-		AgentOutputSummary(
-			agent_name=healthcare_output.agent_name,
-			analysis_text=healthcare_output.analysis_text,
-			timeline_events=healthcare_output.timeline_events,
-			impact_score=healthcare_output.impact_score,
-		),
-		AgentOutputSummary(
-			agent_name=demographics_output.agent_name,
-			analysis_text=demographics_output.analysis_text,
-			timeline_events=demographics_output.timeline_events,
-			impact_score=demographics_output.impact_score,
-		),
+			agent_name=out.agent_name,
+			analysis_text=out.analysis_text,
+			timeline_events=out.timeline_events,
+			impact_score=getattr(out, "impact_score", None),
+		)
+		for out in agent_outputs.values()
 	]
 
 	# Extract causal graph and assumptions via our new simulation modules
@@ -493,16 +521,20 @@ async def narrator_node(state: GraphState) -> dict:
 	uncertainty_score = calculate_uncertainty(agent_outputs_summaries)
 	calibration_score = calculate_calibration(alternate_timeline, scenario_context.divergence_year)
 
+	def _impact(name: str) -> int:
+		out = agent_outputs.get(name)
+		return int(getattr(out, "impact_score", 0) or 0)
+
 	final_report = FinalReportSchema(
 		scenario_summary=scenario_context.scenario,
 		alternate_timeline=alternate_timeline,
 		agent_outputs=agent_outputs_summaries,
 		impact_dashboard=ImpactDashboard(
-			economy=economist_output.impact_score,
-			technology=technology_output.impact_score,
-			society=society_output.impact_score,
-			politics=political_output.impact_score,
-			climate=climate_output.impact_score,
+			economy=_impact("economist"),
+			technology=_impact("technology"),
+			society=_impact("society"),
+			politics=_impact("political"),
+			climate=_impact("climate"),
 		),
 		confidence_score=critic_output.confidence_score,
 		confidence_explanation=critic_output.confidence_explanation,
@@ -522,13 +554,13 @@ async def narrator_node(state: GraphState) -> dict:
 
 def _route_after_parse(state: GraphState) -> str:
 	if state.get("error"):
-		return END
+		return "error"
 	return "historian_node"
 
 
 def _route_after_historian(state: GraphState) -> list[str] | str:
 	if state.get("error"):
-		return END
+		return "error"
 	return [
 		"economist_node",
 		"technology_node",
@@ -555,7 +587,7 @@ async def generate_feedback(state: GraphState) -> dict:
 
 def _route_after_critic(state: GraphState) -> str:
 	if state.get("error"):
-		return END
+		return "error"
 	critic_output = state.get("critic_output")
 	iteration = state.get("iteration", 0)
 	if critic_output and critic_output.confidence_score < 75 and iteration < 2:
@@ -626,7 +658,15 @@ async def run_simulation_graph(
     raw_input: str,
     pre_divergence_timeline: list[UnifiedTimelineEvent] | None = None,
 ) -> GraphState:
-    """Execute the full pipeline with bounded memory usage."""
+    """Execute the full pipeline with bounded memory usage.
+
+    Only the domain agents matched by ``_match_agents`` execute for the
+    scenario; historian always runs and critic converges whatever ran.
+    """
+    matched_agents = _match_agents(raw_input)
+    logger.info("Matched agents for scenario %s: %s", scenario_id, matched_agents)
+    matched_set = set(matched_agents)
+
     state: GraphState = {
         "scenario_id": scenario_id,
         "raw_input": raw_input,
@@ -648,7 +688,11 @@ async def run_simulation_graph(
         "iteration": 0,
         "critic_feedback": None,
         "pre_divergence_timeline": pre_divergence_timeline,
+        "matched_agents": matched_agents,
     }
+
+    # Conditional participation: only matched domain agents execute.
+    domain_steps = tuple(step for step in _DOMAIN_STEPS if step[1] in matched_set)
 
     # 1. parse -> historian (sequential, establishes scenario + baseline).
     for node_name in ("parse_scenario", "historian_node"):
@@ -665,8 +709,8 @@ async def run_simulation_graph(
     # 2. Batched domain fan-out (bounded concurrency instead of 8-way).
     batch_size = max(1, DOMAIN_CONCURRENCY)
     sem = asyncio.Semaphore(batch_size)
-    for i in range(0, len(_DOMAIN_STEPS), batch_size):
-        await _run_domain_batch(state, sem, _DOMAIN_STEPS[i : i + batch_size])
+    for i in range(0, len(domain_steps), batch_size):
+        await _run_domain_batch(state, sem, domain_steps[i : i + batch_size])
         if state.get("error"):
             return state
 
@@ -683,8 +727,8 @@ async def run_simulation_graph(
             state.update(update)
             if _route_after_historian(state) == "error":
                 return state
-            for i in range(0, len(_DOMAIN_STEPS), batch_size):
-                await _run_domain_batch(state, sem, _DOMAIN_STEPS[i : i + batch_size])
+            for i in range(0, len(domain_steps), batch_size):
+                await _run_domain_batch(state, sem, domain_steps[i : i + batch_size])
                 if state.get("error"):
                     return state
             continue

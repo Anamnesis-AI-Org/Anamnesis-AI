@@ -1,4 +1,5 @@
 import logging
+import re
 import asyncio
 from app.rag.document_loader import WikipediaLoader, ResearchPaperLoader, HistoricalDatasetLoader, Document
 from app.rag.embedding_service import get_embedding_service
@@ -27,15 +28,8 @@ class RetrievalService:
             logger.error("Failed to seed Historical Dataset: %s", e)
 
     async def retrieve(self, query_or_context: str | ScenarioContext, domain: str, n_results: int = 3) -> tuple[str, list[str], list[str]]:
-        """
-        Retrieves relevant documents from Wikipedia, research papers, and domain-specific portals.
-        Returns:
-            - formatted_context_string (str)
-            - retrieved_documents (list[str])
-            - sources_consulted (list[str])
-        """
         query = query_or_context.scenario if isinstance(query_or_context, ScenarioContext) else query_or_context
-        
+
         # Decompose search queries if context is provided
         wikipedia_query = query
         arxiv_query = query
@@ -54,7 +48,7 @@ class RetrievalService:
                 un_query = decomposed.get("un_data", query)
                 nasa_query = decomposed.get("nasa", query)
                 noaa_query = decomposed.get("noaa", query)
-                
+
                 # Pick domain-specific primary query
                 if domain == "history":
                     query = wikipedia_query
@@ -69,41 +63,44 @@ class RetrievalService:
             except Exception as e:
                 logger.error("RAG Retrieval │ Failed decomposing query: %s", e)
 
-        # Build tasks to fetch documents in parallel
+        # Domain fingerprint for source activation (see task 2/5/6 below).
+        text = query.lower()
+
+        # Build tasks to fetch documents.
         tasks = []
-        
-        # 1. Wikipedia (always active)
+
+        # 1. Wikipedia (always active).
         tasks.append(WikipediaLoader.load(wikipedia_query, max_articles=RAG_MAX_ARTICLES))
-        
-        # 2. arXiv (always active)
-        tasks.append(ResearchPaperLoader.load(arxiv_query, max_papers=RAG_MAX_PAPERS))
-        
-        # 3. World Bank (for economy/history)
+
+        # 3. World Bank (economy/history only).
         if domain in ("economy", "history"):
             from app.rag.sources.worldbank import WorldBankConnector
             tasks.append(WorldBankConnector.fetch(wb_query))
-            
-        # 4. UN Data (for society/history)
+
+        # 4. UN Data (society/history only).
         if domain in ("society", "history"):
             from app.rag.sources.un_data import UNDataConnector
             tasks.append(UNDataConnector.fetch(un_query))
-            
-        # 5. NASA (for climate/technology)
+
+        # 5. NASA (climate/technology only).
         if domain in ("climate", "technology"):
             from app.rag.sources.nasa import NASAConnector
             tasks.append(NASAConnector.fetch(nasa_query))
-            
-        # 6. NOAA (for climate)
+
+        # 6. NOAA (climate only). NOAA is skipped for healthcare because a
+        #    "what if Modi was PM" counterfactual does not belong to the
+        #    climate/energy domain: the pipeline discards the query instead of
+        #    returning a generic climate dataset.
         if domain == "climate":
             from app.rag.sources.noaa import NOAAConnector
             tasks.append(NOAAConnector.fetch(noaa_query))
-            
+
         # Run fetches in parallel
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         fetched_docs = []
         sources = ["Historical Datasets"]
-        
+
         # Extract fetched documents
         for res in results:
             if isinstance(res, list):
@@ -145,22 +142,22 @@ class RetrievalService:
             "Relevant documents retrieved from Wikipedia, research papers, and domain portals:",
             ""
         ]
-        
+
         for idx, hit in enumerate(top_hits, 1):
             title = hit["metadata"].get("title", "Untitled Document")
             source = hit["metadata"].get("source", "Unknown Source")
             url = hit["metadata"].get("url", "")
-            
-            citation = f"{source} — \"{title}\""
+
+            citation = f"{source} - \"{title}\""
             if url:
                 citation += f" ({url})"
-                
-            retrieved_titles.append(f"{source} — \"{title}\"")
+
+            retrieved_titles.append(f"{source} - \"{title}\"")
             context_lines.append(f"[{idx}] {citation}")
             context_lines.append(hit["content"])
             context_lines.append("")
-            
+
         context_lines.append("━━━ END RETRIEVED MATERIAL ━━━")
         context_str = "\n".join(context_lines)
-        
+
         return context_str, retrieved_titles, list(set(sources))

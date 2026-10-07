@@ -44,8 +44,12 @@ export default function Navbar() {
             {/* Logo */}
             <div className="flex items-center">
               <Link href="/" className="flex items-center gap-2 group">
-                <div className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 shadow-[0_0_15px_rgba(34,211,238,0.1)] group-hover:border-cyan-400 group-hover:shadow-[0_0_20px_rgba(34,211,238,0.2)] transition-all">
-                  <Terminal className="h-4 w-4 text-cyan-400 group-hover:scale-105 transition-transform" />
+                <div className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg border border-cyan-500/30 bg-cyan-500/10 shadow-[0_0_15px_rgba(34,211,238,0.1)] group-hover:border-cyan-400 group-hover:shadow-[0_0_20px_rgba(34,211,238,0.2)] transition-all">
+                  <img
+                    src="/logo.png"
+                    alt="Anamnesis-AI logo"
+                    className="h-full w-full object-contain p-0.5"
+                  />
                 </div>
                 <span className="bg-gradient-to-r from-slate-100 to-slate-300 bg-clip-text text-sm font-bold tracking-tight text-transparent group-hover:to-cyan-200">
                   Anamnesis-AI

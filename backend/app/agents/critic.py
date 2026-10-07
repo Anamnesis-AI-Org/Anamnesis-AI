@@ -13,26 +13,32 @@ from app.schemas import (
 
 async def run_critic(
 	historian: HistorianOutput,
-	economist: EconomistOutput,
-	technology: TechnologyOutput,
-	society: SocietyOutput,
-	climate: ClimateOutput,
-	political: PoliticalOutput,
-	energy: EnergyOutput,
-	healthcare: HealthcareOutput,
-	demographics: DemographicsOutput,
+	economist: EconomistOutput | None = None,
+	technology: TechnologyOutput | None = None,
+	society: SocietyOutput | None = None,
+	climate: ClimateOutput | None = None,
+	political: PoliticalOutput | None = None,
+	energy: EnergyOutput | None = None,
+	healthcare: HealthcareOutput | None = None,
+	demographics: DemographicsOutput | None = None,
 ) -> CriticOutput:
+	# Conditional participation: domain agents that were skipped for this
+	# scenario arrive as None and are omitted from the critic payload.
 	payload = {
 		"historian": historian.model_dump(),
-		"economist": economist.model_dump(),
-		"technology": technology.model_dump(),
-		"society": society.model_dump(),
-		"climate": climate.model_dump(),
-		"political": political.model_dump(),
-		"energy": energy.model_dump(),
-		"healthcare": healthcare.model_dump(),
-		"demographics": demographics.model_dump(),
 	}
+	for name, output in (
+		("economist", economist),
+		("technology", technology),
+		("society", society),
+		("climate", climate),
+		("political", political),
+		("energy", energy),
+		("healthcare", healthcare),
+		("demographics", demographics),
+	):
+		if output is not None:
+			payload[name] = output.model_dump()
 	result = await call_agent(CRITIC_PROMPT, json.dumps(payload))
 	try:
 		output = CriticOutput.model_validate(result)

@@ -157,6 +157,11 @@ export default function LandingPage() {
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[550px] h-[550px] ambient-glow pointer-events-none" />
 
         <div className="relative z-10 max-w-4xl text-center space-y-8 animate-fade-in-up mt-8">
+          <img
+            src="/logo.png"
+            alt="Anamnesis-AI logo"
+            className="mx-auto h-16 w-16 rounded-2xl border border-white/10 bg-slate-950/60 object-contain p-1.5 shadow-[0_0_40px_rgba(34,211,238,0.15)] backdrop-blur-md"
+          />
           <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/5 bg-slate-950/60 px-4 py-1.5 backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 font-mono">Parallel Timelines Research Portal</span>
@@ -456,6 +461,38 @@ export default function LandingPage() {
             <h4 className="text-xs font-bold uppercase tracking-wider">Consistency Graded</h4>
             <p className="text-[11px] leading-5 font-light text-slate-300">
               Confidence score decreases automatically if domain projections deviate from established socio-economic models.
+            </p>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* ──────────────────────────────
+          SECTION 7.5: CONCLUSION
+          ────────────────────────────── */}
+      <section className="relative z-10 mx-auto max-w-5xl px-6 py-20 border-b border-white/5">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.8 }}
+          className="space-y-6"
+        >
+          <div className="space-y-3">
+            <span className="text-mono-label text-cyan-400">Final Verdict</span>
+            <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">Conclusion</h2>
+          </div>
+          <div className="space-y-3 border-l-2 border-cyan-500/40 pl-6">
+            <p className="text-sm text-slate-300 font-light leading-7">
+              History is not a single line — it is a lattice of decisions, each one waiting to be re-asked.
+            </p>
+            <p className="text-sm text-slate-300 font-light leading-7">
+              Anamnesis-AI answers those questions with a disciplined swarm of specialist agents instead of a lone model's guess.
+            </p>
+            <p className="text-sm text-slate-300 font-light leading-7">
+              Every projection is grounded in live research databases and audited by a Critic that grades its own plausibility.
+            </p>
+            <p className="text-sm text-slate-300 font-light leading-7">
+              The result is an alternate timeline you can question, challenge, and trace back to its sources.
             </p>
           </div>
         </motion.div>

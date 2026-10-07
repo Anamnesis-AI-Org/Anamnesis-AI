@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { 
-  FileText, Download, Share2, Compass, ArrowLeft, HelpCircle, 
+  FileText, Download, Share2, Compass, ArrowLeft, ArrowRight, HelpCircle, 
   AlertTriangle, Shield, Check, Info, FileSpreadsheet, ChevronDown, ChevronUp,
   Scale, Globe, Clock, GitBranch, MessageSquare, BookOpen
 } from "lucide-react";
@@ -30,6 +30,22 @@ import ImpactMap from "../../../components/ImpactMap";
 function formatAgentName(name: string): string {
   if (!name) return name;
   return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+function DiveDeeperCTA({ onDive }: { onDive: () => void }) {
+  return (
+    <div className="flex justify-center pt-2">
+      <button
+        type="button"
+        onClick={onDive}
+        className="group inline-flex items-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-950/20 px-5 py-2.5 text-xs font-semibold text-cyan-400 hover:bg-cyan-950/45 transition-colors"
+      >
+        <MessageSquare className="h-4 w-4" />
+        Dive deeper — read the agent briefings
+        <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+      </button>
+    </div>
+  );
 }
 
 const DEBATE_AGENTS = [
@@ -472,12 +488,15 @@ export default function ReportPage() {
                   <RadarChart data={impactDashboard} />
                 </div>
               </div>
+
+              {/* Dive deeper CTA → agent briefings tab */}
+              <DiveDeeperCTA onDive={() => setActiveTab("discussions")} />
             </div>
           )}
 
           {/* TAB 2: INTERACTIVE TIMELINE */}
           {activeTab === "timeline" && (
-            <div className="animate-fade-in">
+            <div className="animate-fade-in space-y-8">
               <InteractiveTimeline
                 events={sortedTimeline}
                 validations={report.grounding_validations || []}
@@ -486,12 +505,13 @@ export default function ReportPage() {
                   router.push(`/simulation?parent_id=${id}&event_id=${eventId}`);
                 }}
               />
+              <DiveDeeperCTA onDive={() => setActiveTab("discussions")} />
             </div>
           )}
 
           {/* TAB 3: DIVERGENCE TREE */}
           {activeTab === "tree" && (
-            <div className="animate-fade-in">
+            <div className="animate-fade-in space-y-8">
               <DecisionTree
                 scenarioId={id}
                 events={sortedTimeline}
@@ -501,6 +521,7 @@ export default function ReportPage() {
                   router.push(`/simulation?parent_id=${id}&event_id=${eventId}`);
                 }}
               />
+              <DiveDeeperCTA onDive={() => setActiveTab("discussions")} />
             </div>
           )}
 
