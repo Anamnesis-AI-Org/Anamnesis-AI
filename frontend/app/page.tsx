@@ -160,7 +160,7 @@ export default function LandingPage() {
           <img
             src="/logo.png"
             alt="Anamnesis-AI logo"
-            className="mx-auto h-16 w-16 rounded-2xl border border-white/10 bg-slate-950/60 object-contain p-1.5 shadow-[0_0_40px_rgba(34,211,238,0.15)] backdrop-blur-md"
+            className="mx-auto h-36 w-auto max-w-none object-contain drop-shadow-[0_0_30px_rgba(34,211,238,0.25)]"
           />
           <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/5 bg-slate-950/60 px-4 py-1.5 backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
