@@ -19,6 +19,7 @@ import {
 import type { AskResponse, DebateResponse } from "../../../lib/api";
 import { MOCK_SCENARIOS } from "../../../lib/mockScenarios";
 import type { FinalReport, UnifiedTimelineEvent, AgentOutputSummary } from "../../../lib/types";
+import { playSound } from "../../../utils/sfx";
 
 // Import our advanced custom visual components
 import AnimatedGauges from "../../../components/AnimatedGauges";
@@ -34,7 +35,7 @@ function formatAgentName(name: string): string {
 
 function DiveDeeperCTA({ onDive }: { onDive: () => void }) {
   return (
-    <div className="flex justify-center pt-2">
+    <div className="no-print flex justify-center pt-2">
       <button
         type="button"
         onClick={onDive}
@@ -45,6 +46,14 @@ function DiveDeeperCTA({ onDive }: { onDive: () => void }) {
         <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
       </button>
     </div>
+  );
+}
+
+function PrintSectionTitle({ children }: { children: string }) {
+  return (
+    <h2 className="print-only mb-4 border-b border-white/10 pb-3 font-mono text-base font-bold uppercase tracking-widest text-cyan-300">
+      {children}
+    </h2>
   );
 }
 
@@ -206,6 +215,7 @@ export default function ReportPage() {
   const [shareStatus, setShareStatus] = useState("Share Report");
   const [activeTab, setActiveTab] = useState<"synthesis" | "timeline" | "tree" | "causal" | "discussions" | "sources" | "exploration">("synthesis");
   const [isMock, setIsMock] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   // Exploration Lab state (Q&A, debate, parameter adjustment)
   const [question, setQuestion] = useState("");
@@ -240,6 +250,7 @@ export default function ReportPage() {
       setIsMock(true);
       setReport(matchedMock.report);
       setError("");
+      playSound("chime");
       return;
     }
 
@@ -252,6 +263,7 @@ export default function ReportPage() {
         if (!active) return;
         setReport(nextReport);
         setError("");
+        playSound("chime");
         try {
           window.localStorage.setItem(`anamnesis_report_${id}`, JSON.stringify(nextReport));
         } catch {
@@ -273,6 +285,13 @@ export default function ReportPage() {
       active = false;
     };
   }, [id, router]);
+
+  // Reset the print-all flag once the print dialog closes.
+  useEffect(() => {
+    const onAfterPrint = () => setPrinting(false);
+    window.addEventListener("afterprint", onAfterPrint);
+    return () => window.removeEventListener("afterprint", onAfterPrint);
+  }, []);
 
   const sortedTimeline = useMemo(() => {
     if (!report) return [] as UnifiedTimelineEvent[];
@@ -335,7 +354,10 @@ export default function ReportPage() {
   };
 
   const handleExport = () => {
-    window.print();
+    // Render every tab before opening the print dialog so the exported PDF
+    // contains the whole report, not just the active tab.
+    setPrinting(true);
+    window.setTimeout(() => window.print(), 450);
   };
 
   if (error) {
@@ -388,7 +410,7 @@ export default function ReportPage() {
       <div className="mx-auto max-w-5xl space-y-8 relative z-10">
         
         {/* Navigation & Actions Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="no-print flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <Link
             href="/library"
             className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
@@ -424,14 +446,18 @@ export default function ReportPage() {
         </div>
 
         {/* Tabbed Navigation Bar */}
-        <div className="flex border-b border-white/5 overflow-x-auto scrollbar-none">
+        <div className="no-print flex border-b border-white/5 overflow-x-auto scrollbar-none">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                data-nosfx="true"
+                onClick={() => {
+                  playSound("whoosh");
+                  setActiveTab(tab.id);
+                }}
                 className={`flex items-center gap-2 px-5 py-4 border-b-2 font-mono text-[10px] uppercase font-bold tracking-widest transition-all duration-300 shrink-0 ${
                   isActive
                     ? "border-cyan-400 text-cyan-400 bg-cyan-400/5"
@@ -449,8 +475,9 @@ export default function ReportPage() {
         <div className="space-y-8 min-h-[500px]">
           
           {/* TAB 1: EXECUTIVE SYNTHESIS */}
-          {activeTab === "synthesis" && (
-            <div className="space-y-8 animate-fade-in">
+          {(printing || activeTab === "synthesis") && (
+            <div className="print-section space-y-8 animate-fade-in">
+              <PrintSectionTitle>Executive Synthesis</PrintSectionTitle>
               {/* Executive Summary */}
               <section className="rounded-2xl glass-panel p-8 shadow-2xl space-y-4">
                 <div className="flex items-center gap-2 text-mono-label text-cyan-400">
@@ -495,8 +522,9 @@ export default function ReportPage() {
           )}
 
           {/* TAB 2: INTERACTIVE TIMELINE */}
-          {activeTab === "timeline" && (
-            <div className="animate-fade-in space-y-8">
+          {(printing || activeTab === "timeline") && (
+            <div className="print-section animate-fade-in space-y-8">
+              <PrintSectionTitle>Interactive Chronology</PrintSectionTitle>
               <InteractiveTimeline
                 events={sortedTimeline}
                 validations={report.grounding_validations || []}
@@ -510,8 +538,9 @@ export default function ReportPage() {
           )}
 
           {/* TAB 3: DIVERGENCE TREE */}
-          {activeTab === "tree" && (
-            <div className="animate-fade-in space-y-8">
+          {(printing || activeTab === "tree") && (
+            <div className="print-section animate-fade-in space-y-8">
+              <PrintSectionTitle>Divergence Tree</PrintSectionTitle>
               <DecisionTree
                 scenarioId={id}
                 events={sortedTimeline}
@@ -526,8 +555,9 @@ export default function ReportPage() {
           )}
 
           {/* TAB 3: CAUSAL DAG GRAPH */}
-          {activeTab === "causal" && (
-            <div className="animate-fade-in">
+          {(printing || activeTab === "causal") && (
+            <div className="print-section animate-fade-in">
+              <PrintSectionTitle>Causal DAG Graph</PrintSectionTitle>
               <CausalGraph
                 events={report.alternate_timeline}
                 links={report.causal_graph || []}
@@ -536,8 +566,9 @@ export default function ReportPage() {
           )}
 
           {/* TAB 4: DOMAIN BRIEFINGS */}
-          {activeTab === "discussions" && (
-            <div className="space-y-8 animate-fade-in">
+          {(printing || activeTab === "discussions") && (
+            <div className="print-section space-y-8 animate-fade-in">
+              <PrintSectionTitle>Domain Briefings</PrintSectionTitle>
               
               {/* Agent narratives */}
               <section className="rounded-2xl glass-panel p-8 shadow-xl space-y-6">
@@ -651,8 +682,9 @@ export default function ReportPage() {
           )}
 
           {/* TAB 5: CONSULTED SOURCES */}
-          {activeTab === "sources" && (
-            <div className="animate-fade-in">
+          {(printing || activeTab === "sources") && (
+            <div className="print-section animate-fade-in">
+              <PrintSectionTitle>Consulted Sources</PrintSectionTitle>
               <section className="rounded-2xl glass-panel p-8 shadow-xl space-y-6">
                 <div className="flex items-center gap-2">
                   <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
@@ -747,8 +779,9 @@ export default function ReportPage() {
           )}
 
           {/* TAB: EXPLORATION LAB */}
-          {activeTab === "exploration" && !isMock && (
-            <div className="space-y-8 animate-fade-in">
+          {(printing || activeTab === "exploration") && !isMock && (
+            <div className="print-section space-y-8 animate-fade-in">
+              <PrintSectionTitle>Exploration Lab</PrintSectionTitle>
 
               {/* Ask the simulation */}
               <section className="rounded-2xl glass-panel p-8 shadow-xl space-y-5">
@@ -918,7 +951,7 @@ export default function ReportPage() {
         </div>
 
         {/* Action Trigger */}
-        <div className="flex justify-center pt-4">
+        <div className="no-print flex justify-center pt-4">
           <Link
             href="/simulation"
             className="inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 px-8 py-3 text-xs font-bold uppercase tracking-wider text-slate-950 transition hover:brightness-110 active:scale-[0.98]"

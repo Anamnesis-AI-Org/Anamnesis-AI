@@ -38,7 +38,7 @@ from app.agents.energy import run_energy
 from app.agents.healthcare import run_healthcare
 from app.agents.demographics import run_demographics
 from app.llm_client import AgentResponseError, call_agent
-from app.prompts import ORCHESTRATOR_PARSE_PROMPT
+from app.prompts import AGENT_ROUTING_PROMPT, ORCHESTRATOR_PARSE_PROMPT
 from app.timeline_engine import create_unified_timeline
 from app.schemas import (
 	AgentOutputSummary,
@@ -146,6 +146,92 @@ def _match_agents(raw_input: str) -> list[str]:
         if name in seen:
             ordered.append(name)
     return ordered
+
+
+# Canonical short names the LLM router may return.
+_ROUTABLE_AGENTS: tuple[str, ...] = (
+    "historian",
+    "economist",
+    "technology",
+    "society",
+    "climate",
+    "political",
+    "energy",
+    "healthcare",
+    "demographics",
+)
+
+# Common LLM phrasings mapped onto canonical agent names.
+_ROUTE_ALIASES: dict[str, str] = {
+    "economy": "economist",
+    "economic": "economist",
+    "economics": "economist",
+    "finance": "economist",
+    "financial": "economist",
+    "politics": "political",
+    "government": "political",
+    "governance": "political",
+    "tech": "technology",
+    "environment": "climate",
+    "environmental": "climate",
+    "health": "healthcare",
+    "medicine": "healthcare",
+    "medical": "healthcare",
+    "demography": "demographics",
+    "population": "demographics",
+    "social": "society",
+    "history": "historian",
+}
+
+_ROUTE_TIMEOUT_SECONDS = 20.0
+
+
+async def _route_agents(raw_input: str) -> list[str]:
+    """LLM-based domain routing with keyword fallback.
+
+    Ask the LLM which of the nine agents could have even a slight say in
+    the scenario; fall back to the keyword matcher whenever the call fails
+    or returns nothing usable. Historian always participates; the critic
+    and narrator run afterwards regardless of this list.
+    """
+    try:
+        result = await asyncio.wait_for(
+            call_agent(AGENT_ROUTING_PROMPT, raw_input),
+            timeout=_ROUTE_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        logger.warning(
+            "Agent routing LLM call failed; falling back to keyword matching",
+            exc_info=True,
+        )
+        return _match_agents(raw_input)
+
+    domains = result.get("domains") if isinstance(result, dict) else None
+    if isinstance(domains, str):
+        domains = [domains]
+    if not isinstance(domains, list):
+        logger.warning(
+            "Agent routing returned no domains list; using keyword matching"
+        )
+        return _match_agents(raw_input)
+
+    picked: set[str] = set()
+    for entry in domains:
+        if not isinstance(entry, str):
+            continue
+        name = entry.strip().lower()
+        name = _ROUTE_ALIASES.get(name, name)
+        if name in _ROUTABLE_AGENTS:
+            picked.add(name)
+
+    if not picked:
+        logger.warning(
+            "Agent routing produced no valid domains; using keyword matching"
+        )
+        return _match_agents(raw_input)
+
+    picked.add("historian")
+    return [name for name in _agent_name_map().values() if name in picked]
 
 
 class GraphState(TypedDict, total=False):
@@ -660,10 +746,10 @@ async def run_simulation_graph(
 ) -> GraphState:
     """Execute the full pipeline with bounded memory usage.
 
-    Only the domain agents matched by ``_match_agents`` execute for the
+    Only the domain agents selected by ``_route_agents`` execute for the
     scenario; historian always runs and critic converges whatever ran.
     """
-    matched_agents = _match_agents(raw_input)
+    matched_agents = await _route_agents(raw_input)
     logger.info("Matched agents for scenario %s: %s", scenario_id, matched_agents)
     matched_set = set(matched_agents)
 

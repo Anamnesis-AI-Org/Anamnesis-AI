@@ -34,6 +34,7 @@ _CANNED: dict[str, dict] = {
         "focus_domains": ["economy", "technology", "society", "politics"],
         "time_horizon": 2030,
     },
+    "router": {"domains": []},
     "historian": {
         "analysis_text": "Baseline context and the immediate divergence trajectory.",
         "timeline_events": [

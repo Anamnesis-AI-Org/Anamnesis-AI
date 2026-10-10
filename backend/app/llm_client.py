@@ -252,10 +252,13 @@ async def _retry_request_with_failover(
 def _agent_label(system_prompt: str) -> str:
     """Derive a short agent name from the system prompt for log messages.
 
-    NOTE: 'critic', 'causal', and 'assumption' are checked before other agents
-    because their prompts contain other agent names in their bodies.
+    NOTE: 'participation-routing', 'critic', 'causal', and 'assumption' are
+    checked before other agents because their prompts contain other agent
+    names in their bodies.
     """
     p = system_prompt.lower()
+    if "participation-routing" in p:
+        return "router"
     if "lead counterfactual researcher" in p:
         return "qa"
     if "structured research debate" in p:

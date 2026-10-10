@@ -177,3 +177,54 @@ body {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Print / PDF export: render the whole report, hide app chrome. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  header,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #000000 !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  body > div {
+    padding-top: 0 !important;
+  }
+
+  main {
+    overflow: visible !important;
+    min-height: auto !important;
+    padding: 0.4in !important;
+  }
+
+  .animate-fade-in,
+  .animate-fade-in-up {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-section + .print-section {
+    page-break-before: always;
+    break-before: page;
+  }
+}

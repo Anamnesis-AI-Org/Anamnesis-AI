@@ -32,7 +32,7 @@ export default function FloatingLauncher() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[80] font-sans">
+    <div className="no-print fixed bottom-6 right-6 z-[80] font-sans">
       {/* Popover Card */}
       {isOpen && (
         <div className="mb-3 w-80 rounded-xl border border-white/10 bg-slate-950/95 p-4 shadow-2xl glass-panel animate-fade-in-up">
